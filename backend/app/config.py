@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     # Don't delete projects whose simulation failed, so the job log and setup
     # can be inspected in the Allsolve dashboard
     keep_failed_projects: bool = False
+    # Don't delete any projects (successful ones too), so every run stays
+    # visible in the Allsolve dashboard
+    keep_projects: bool = False
 
     class Config:
         env_file = ".env"

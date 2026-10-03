@@ -295,6 +295,11 @@ class _ProjectRun:
     def cleanup(self) -> None:
         """Delete the project and everything in it."""
         settings = get_settings()
+        if self._project and settings.keep_projects:
+            url = f"{settings.qs_host.rstrip('/')}/#/projects/{self._project.id}"
+            logger.info(f"   Keeping project {self._project.id} (KEEP_PROJECTS=true): {url}")
+            self._project = None
+            return
         if self._project and self.failed and settings.keep_failed_projects:
             url = f"{settings.qs_host.rstrip('/')}/#/projects/{self._project.id}"
             logger.warning(
