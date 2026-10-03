@@ -40,6 +40,7 @@ frontend/dist/
 Thumbs.db
 
 # Test artifacts
+.browser-check/
 .coverage
 htmlcov/
 .pytest_cache/
