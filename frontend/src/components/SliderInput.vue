@@ -23,5 +23,5 @@ function update(event: Event) {
 .slider-value-row { display:flex; align-items:center; gap:13px; }
 .slider-value-row > input { flex:1; min-width:0; accent-color:#087f79; }
 .slider-value-row > .number-input { width:98px; flex-shrink:0; }
-.slider-bounds { display:flex; justify-content:space-between; margin-top:4px; padding-right:111px; color:#8a9ca6; font-size:9px; }
+.slider-bounds { display:flex; justify-content:space-between; margin-top:4px; padding-right:111px; color:#8a9ca6; font-size:12px; }
 </style>

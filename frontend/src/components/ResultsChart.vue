@@ -211,7 +211,7 @@ const icePlugins = [markerPlugin]
 .results-chart { padding: 16px 20px 0; display: flex; flex-direction: column; gap: 12px; }
 .temp-chart { height: 280px; }
 .ice-chart { height: 150px; }
-.chart-caption { margin: 0; font-size: 10px; color: #8fa2b0; }
+.chart-caption { margin: 0; font-size: 13px; color: #8fa2b0; }
 @media (max-width: 540px) {
   .results-chart { padding-left: 10px; padding-right: 12px; }
 }
