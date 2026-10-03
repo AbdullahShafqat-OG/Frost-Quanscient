@@ -134,23 +134,13 @@ function toggleMode() {
 
       <div class="param-group">
         <span class="param-label">Where the pipe is</span>
-        <div class="option-group cols-3">
-          <!-- Fixed in this version: shown for context, not selectable -->
-          <button
-            v-for="[value, spec] in locationOptions"
-            :key="value"
-            type="button"
-            disabled
-            :aria-pressed="value === FIXED_LOCATION"
-            :class="{ selected: value === FIXED_LOCATION, fixed: value === FIXED_LOCATION }"
-          >
-            {{ spec.label }}
-          </button>
+        <div class="location-fixed" aria-label="Location fixed to outdoors">
+          <div class="location-top">
+            <span class="location-badge">Outdoors</span>
+            <span class="location-locked">Fixed in this version</span>
+          </div>
+          <p class="location-summary"><b>Assumed:</b> {{ LOCATIONS[store.params.location].summary }}</p>
         </div>
-        <p class="input-hint">Fixed to {{ LOCATIONS[FIXED_LOCATION].label.toLowerCase() }} in this version.</p>
-        <p class="exposure-note">
-          <b>Assumed:</b> {{ LOCATIONS[store.params.location].summary }}
-        </p>
       </div>
 
       <div v-for="s in conditionSliders" :key="s.key" class="param-slider">
@@ -188,8 +178,8 @@ function toggleMode() {
         :disabled="store.isRunning"
         @click="toggleMode"
       >
-        <span class="mode-name">{{ store.useDemoMode ? 'Demo (local estimate)' : 'Full simulation (Allsolve)' }}</span>
-        <span class="mode-switch">click to switch</span>
+        <span class="mode-name">{{ store.useDemoMode ? 'Demo' : 'Full simulation' }}</span>
+        <span class="mode-switch">{{ store.useDemoMode ? 'Local estimate' : 'Allsolve cloud' }}</span>
       </button>
       <p class="input-hint mode-hint">
         {{ store.useDemoMode
@@ -201,7 +191,7 @@ function toggleMode() {
     <!-- Action Buttons -->
     <div class="actions">
       <button v-if="!store.isRunning" type="button" class="run-button" @click="store.startAnalysis()">
-        <span>Analyse freeze risk</span><span aria-hidden="true">→</span>
+        <span>Run simulation</span><span aria-hidden="true">→</span>
       </button>
 
       <button v-if="store.isRunning" type="button" class="run-button abort-button" @click="store.abortAnalysis()">
@@ -267,8 +257,16 @@ function toggleMode() {
   background: rgba(255,255,255,0.92); color: var(--teal-dk); border-color: rgba(10,150,136,0.25);
   box-shadow: 0 1px 4px rgba(14,28,40,0.08);
 }
-/* Fixed location: selected but not interactive, so keep it fully legible */
-.option-group button.fixed:disabled { opacity: 1; }
+.location-fixed {
+  display: flex; flex-direction: column; gap: 7px;
+  padding: 10px 12px; border-radius: var(--r-sm);
+  background: rgba(10,150,136,0.06); border: 1px solid rgba(10,150,136,0.12);
+  margin-bottom: 2px;
+}
+.location-top { display: flex; align-items: center; gap: 10px; }
+.location-badge { font-size: 13px; font-weight: 600; color: var(--teal-dk); }
+.location-locked { font-size: 12px; color: var(--subtle); }
+.location-summary { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.55; }
 
 .exposure-note { margin: 8px 0 0; }
 
@@ -282,8 +280,8 @@ function toggleMode() {
 .mode-full:hover:not(:disabled) { background: rgba(10,150,136,0.14); }
 .mode-demo { background: rgba(235,195,60,0.12); color: #7a6020; border-color: rgba(200,160,35,0.3); }
 .mode-demo:hover:not(:disabled) { background: rgba(235,195,60,0.2); }
-.mode-name { font-weight: 600; }
-.mode-switch { font-size: 12px; opacity: .8; white-space: nowrap; }
+.mode-name { font-weight: 600; white-space: nowrap; }
+.mode-switch { font-size: 12px; opacity: .8; white-space: nowrap; text-align: right; }
 .mode-hint { text-align: center; }
 
 /* Actions */
