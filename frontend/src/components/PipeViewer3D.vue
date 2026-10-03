@@ -11,7 +11,7 @@ import { LAYER_STYLES } from '@/visuals/materialStyles'
 import { PipeScene } from '@/visuals/pipeScene'
 
 const store = useAnalysisStore()
-const { radii, iceFraction, wallLayer, insulationLayer } = usePipeGeometry()
+const { radii, displayParams, iceFraction, wallLayer, insulationLayer } = usePipeGeometry()
 const reducedMotion = usePreferredReducedMotion()
 
 const container = ref<HTMLDivElement>()
@@ -27,7 +27,7 @@ const ORBIT_STEP = Math.PI / 24
 const ZOOM_STEP = 0.9
 
 const description = computed(() => {
-  const p = store.params
+  const p = displayParams.value
   const ins = insulationLayer.value
     ? `${p.insulation_thickness_mm} mm ${LAYER_STYLES[insulationLayer.value].label.toLowerCase()} insulation stepped back to show the pipe, `
     : 'no insulation, '
@@ -36,13 +36,20 @@ const description = computed(() => {
   return `3D model of a ${p.inner_diameter_mm} mm ${LAYER_STYLES[wallLayer.value].label} pipe: ${ins}${p.wall_thickness_mm} mm wall, water core.${ice}${cut}`
 })
 
+let modelInitialized = false
+
 function updateModel() {
+  const r = radii.value
   scene?.setModel({
-    radii: radii.value,
+    radii: r,
     wall: wallLayer.value,
     insulation: insulationLayer.value,
     cutaway: cutaway.value,
   })
+  // On first mount reset the camera to a good starting position;
+  // after that only update distance constraints so the user's rotation is kept.
+  scene?.fitCamera(r.outer, !modelInitialized)
+  modelInitialized = true
 }
 
 onMounted(() => {
@@ -79,7 +86,7 @@ function onKeydown(event: KeyboardEvent) {
     '+': () => scene!.zoom(ZOOM_STEP),
     '=': () => scene!.zoom(ZOOM_STEP),
     '-': () => scene!.zoom(1 / ZOOM_STEP),
-    Home: () => scene!.resetView(),
+    Home: () => scene!.fitCamera(radii.value.outer, true),
   }
   const action = actions[event.key]
   if (action) {
@@ -109,7 +116,7 @@ function onKeydown(event: KeyboardEvent) {
           type="button"
           class="px-2.5 py-1 rounded-md text-xs font-medium border bg-white text-grey-700 border-grey-300 hover:bg-grey-50 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500"
           :disabled="unsupported"
-          @click="scene?.resetView()"
+          @click="scene?.fitCamera(radii.outer, true)"
         >
           Reset view
         </button>

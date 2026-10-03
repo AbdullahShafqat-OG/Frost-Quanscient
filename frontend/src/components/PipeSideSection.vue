@@ -7,7 +7,7 @@ import SectionPatterns from '@/components/SectionPatterns.vue'
 import { LAYER_STYLES, OUTLINE_COLOR, sectionPatternId, type LayerKey } from '@/visuals/materialStyles'
 
 const store = useAnalysisStore()
-const { dims, radii, iceFraction, wallLayer, insulationLayer } = usePipeGeometry()
+const { dims, displayParams, radii, iceFraction, wallLayer, insulationLayer } = usePipeGeometry()
 const uid = `side-${useId()}`
 
 const CY = 108
@@ -18,7 +18,7 @@ const WAVE = 6 // amplitude of the break lines
 
 const px = computed(() => {
   const r = radii.value
-  return { liquid: r.liquid * R_MAX, water: r.water * R_MAX, wall: r.wall * R_MAX, outer: R_MAX }
+  return { liquid: r.liquid * R_MAX, water: r.water * R_MAX, wall: r.wall * R_MAX, outer: r.outer * R_MAX }
 })
 
 interface Band {
@@ -73,7 +73,7 @@ const outline = computed(() => {
 const outerDiameterMm = computed(() => +(2 * dims.value.rOut).toFixed(1))
 
 const description = computed(() => {
-  const p = store.params
+  const p = displayParams.value
   const ins = insulationLayer.value
     ? `${p.insulation_thickness_mm} mm ${LAYER_STYLES[insulationLayer.value].label.toLowerCase()} on top and bottom, `
     : ''
@@ -112,7 +112,7 @@ const description = computed(() => {
       <line :x1="X0 - 12" :y1="CY" :x2="X1 + 12" :y2="CY" :stroke="OUTLINE_COLOR" stroke-width="0.75" stroke-dasharray="10 3 2 3" />
 
       <!-- Drip flow direction -->
-      <g v-if="store.params.drip_flow_lpm > 0 && px.liquid > 12">
+      <g v-if="displayParams.drip_flow_lpm > 0 && px.liquid > 12">
         <line x1="190" :y1="CY + px.liquid / 2" x2="250" :y2="CY + px.liquid / 2" stroke="#FFFFFF" stroke-width="2" :marker-end="`url(#${uid}-arrow)`" />
         <text x="220" :y="CY + px.liquid / 2 - 4" font-size="9" fill="#FFFFFF" text-anchor="middle" stroke="#0B3B66" stroke-width="2.5" paint-order="stroke">drip</text>
       </g>
@@ -129,7 +129,7 @@ const description = computed(() => {
           :marker-start="`url(#${uid}-arrow)`"
           :marker-end="`url(#${uid}-arrow)`"
         />
-        <text x="76" :y="CY - 4" fill="#FFFFFF" stroke="#0B3B66" stroke-width="2.5" paint-order="stroke">⌀{{ store.params.inner_diameter_mm }}</text>
+        <text x="76" :y="CY - 4" fill="#FFFFFF" stroke="#0B3B66" stroke-width="2.5" paint-order="stroke">⌀{{ displayParams.inner_diameter_mm }}</text>
       </g>
 
       <!-- Outer diameter -->

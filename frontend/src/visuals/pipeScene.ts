@@ -113,6 +113,31 @@ export class PipeScene {
     this.requestRender()
   }
 
+  /**
+   * Fit the camera to a pipe whose outermost radius is `outerRadius` in world-space.
+   * Pass `resetOrientation = true` only on first mount and when the user clicks
+   * "Reset view" — subsequent model changes (wall / insulation tweaks) just update
+   * the distance constraints so the user's current rotation is preserved.
+   */
+  fitCamera(outerRadius: number, resetOrientation = false): void {
+    const s = Math.max(outerRadius, 0.2)
+    this.controls.minDistance = MIN_DISTANCE * s
+    this.controls.maxDistance = MAX_DISTANCE * s
+
+    if (resetOrientation) {
+      this.camera.position.copy(CAMERA_HOME.clone().multiplyScalar(s))
+      this.controls.target.copy(TARGET_HOME.clone().multiplyScalar(s))
+    } else {
+      // Keep the current orbit angle; only clamp distance into the new valid range.
+      const offset = this.camera.position.clone().sub(this.controls.target)
+      const dist = THREE.MathUtils.clamp(offset.length(), MIN_DISTANCE * s, MAX_DISTANCE * s)
+      this.camera.position.copy(this.controls.target.clone().add(offset.setLength(dist)))
+    }
+
+    this.controls.update()
+    this.requestRender()
+  }
+
   /** Keyboard orbit: angles in radians */
   orbit(dAzimuth: number, dPolar: number): void {
     const offset = this.camera.position.clone().sub(this.controls.target)

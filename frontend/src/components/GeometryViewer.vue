@@ -8,7 +8,7 @@ import MaterialLegend from '@/components/MaterialLegend.vue'
 import { LAYER_STYLES, OUTLINE_COLOR, sectionPatternId, type LayerKey } from '@/visuals/materialStyles'
 
 const store = useAnalysisStore()
-const { radii, iceFraction, wallLayer, insulationLayer } = usePipeGeometry()
+const { radii, displayParams, iceFraction, wallLayer, insulationLayer } = usePipeGeometry()
 const prefix = `front-${useId()}`
 
 const CX = 150
@@ -17,7 +17,7 @@ const R_MAX = 105 // px for the outermost radius
 
 const px = computed(() => {
   const r = radii.value
-  return { liquid: r.liquid * R_MAX, water: r.water * R_MAX, wall: r.wall * R_MAX, outer: R_MAX }
+  return { liquid: r.liquid * R_MAX, water: r.water * R_MAX, wall: r.wall * R_MAX, outer: r.outer * R_MAX }
 })
 
 const layers = computed<LayerKey[]>(() => [wallLayer.value, ...(insulationLayer.value ? [insulationLayer.value] : []), 'water', 'ice'])
@@ -29,10 +29,10 @@ const BACKDROP = {
   indoors: { fill: '#FEF3C7', label: 'Wall cavity / unheated space' },
   underground: { fill: '#D6C3A5', label: 'Soil, 0.45 m deep' },
 } as const
-const backdrop = computed(() => BACKDROP[store.params.location])
+const backdrop = computed(() => BACKDROP[displayParams.value.location])
 
 const description = computed(() => {
-  const p = store.params
+  const p = displayParams.value
   const ins = insulationLayer.value
     ? `, wrapped in ${p.insulation_thickness_mm} mm of ${LAYER_STYLES[insulationLayer.value].label.toLowerCase()}`
     : ', uninsulated'
@@ -54,14 +54,14 @@ const description = computed(() => {
       </defs>
 
       <!-- Surroundings backdrop — just wind arrows, no filled rect -->
-      <g v-if="store.params.location === 'outdoors'" stroke="#64748B" stroke-width="1.5" fill="#64748B">
+      <g v-if="displayParams.location === 'outdoors'" stroke="#64748B" stroke-width="1.5" fill="#64748B">
         <g v-for="i in 3" :key="i" :transform="`translate(8, ${CY - 40 + (i - 1) * 40})`">
           <line x1="0" y1="0" x2="22" y2="0" />
           <path d="M22 -3 L28 0 L22 3 z" />
         </g>
       </g>
       <text x="8" y="16" font-size="10" fill="#334155">{{ backdrop.label }}</text>
-      <text x="8" y="280" font-size="10" fill="#334155">Outside {{ store.params.outside_temp_c }}°C</text>
+      <text x="8" y="280" font-size="10" fill="#334155">Outside {{ displayParams.outside_temp_c }}°C</text>
       <text x="292" y="280" font-size="10" fill="#334155" text-anchor="end">Section A–A</text>
 
       <g :stroke="OUTLINE_COLOR" stroke-width="1">
@@ -88,7 +88,7 @@ const description = computed(() => {
         stroke="#0B3B66"
         stroke-width="2.5"
         paint-order="stroke"
-      >⌀{{ store.params.inner_diameter_mm }}</text>
+      >⌀{{ displayParams.inner_diameter_mm }}</text>
     </svg>
 
     <MaterialLegend class="mt-2" />
