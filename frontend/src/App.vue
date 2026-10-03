@@ -3,7 +3,7 @@ import { computed, defineAsyncComponent, onUnmounted, reactive, ref, watch, watc
 import ResultsChart from '@/components/ResultsChart.vue'
 import SliderInput from '@/components/SliderInput.vue'
 import PipeSideSection from '@/components/PipeSideSection.vue'
-import MaterialLegend from '@/components/MaterialLegend.vue'
+import GeometryViewer from '@/components/GeometryViewer.vue'
 import type { PipeParams, PipeResult } from '@/types/pipe'
 import { formatHours, formatTemperature } from '@/types'
 import { runEstimate, startJob, pollJob } from '@/api/analysis'
@@ -201,8 +201,9 @@ onUnmounted(() => {
           <div class="model-col-head"><p class="eyebrow">PIPE MODEL</p><h3>Cross-section &amp; geometry</h3></div>
           <div class="pipe-3d-wrap"><Suspense><PipeViewer3D /></Suspense></div>
           <div class="pipe-side-stack">
+            <!-- Front cross-section includes the material legend -->
+            <div class="pipe-front-wrap"><GeometryViewer /></div>
             <PipeSideSection />
-            <MaterialLegend />
           </div>
         </div>
 
@@ -353,10 +354,9 @@ onUnmounted(() => {
 
 .tri-layout { display: grid; grid-template-columns: 280px 420px minmax(0,1fr); gap: 18px; align-items: start; }
 
-/* Column 2 – 3D models */
+/* Column 2 – 3D model and 2D sections (taller than the viewport, so not sticky) */
 .model-column {
   display: flex; flex-direction: column; gap: 12px;
-  position: sticky; top: 84px;
 }
 .model-col-head { margin-bottom: 2px; }
 .model-col-head h3 { font-size: 15px; font-weight: 600; margin: 4px 0 0; letter-spacing: -.2px; }
@@ -365,6 +365,7 @@ onUnmounted(() => {
   background: rgba(14,28,40,0.02);
 }
 .pipe-side-stack { display: flex; flex-direction: column; gap: 10px; }
+.pipe-front-wrap { height: 380px; }
 
 /* ── Glass card base ─────────────────────────────────────────────────────────── */
 .setup-panel,
@@ -590,7 +591,6 @@ button:focus-visible, select:focus-visible, a:focus-visible { outline:2px solid 
   .workspace { padding:18px 14px 44px; }
   .topbar { padding:0 16px; min-height:60px; }
   .tri-layout { grid-template-columns: 1fr; gap:13px; }
-  .model-column { position:static; } /* don't sticky on mobile */
   .pipe-3d-wrap { height:280px; }
 
   .risk-card { padding:16px 16px; }
