@@ -1,154 +1,460 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent } from 'vue'
-import { useAnalysisStore } from '@/stores/analysisStore'
-import ParameterPanel from '@/components/ParameterPanel.vue'
-import GeometryViewer from '@/components/GeometryViewer.vue'
+import { computed, defineAsyncComponent, ref } from 'vue'
 import ResultsChart from '@/components/ResultsChart.vue'
-import VerdictCard from '@/components/VerdictCard.vue'
+import ParameterPanel from '@/components/ParameterPanel.vue'
 import PipeSideSection from '@/components/PipeSideSection.vue'
-import MaterialLegend from '@/components/MaterialLegend.vue'
+import GeometryViewer from '@/components/GeometryViewer.vue'
+import { formatHours, formatTemperature, INSULATION_TYPES, type AnalysisResults } from '@/types'
+import { useAnalysisStore } from '@/stores/analysisStore'
 
-// three.js is loaded in its own chunk, off the critical path
 const PipeViewer3D = defineAsyncComponent(() => import('@/components/PipeViewer3D.vue'))
-
 const store = useAnalysisStore()
 
-const showResults = computed(() => store.hasResults)
+const result = computed(() => store.results)
+const comparison = ref<AnalysisResults[]>([])
+const sidebarOpen = ref(false)
+
+const RISK = {
+  freezes: { key: 'freezing', title: 'Freezes', icon: '❄' },
+  at_risk: { key: 'near', title: 'At risk', icon: '!' },
+  safe: { key: 'above', title: 'Safe', icon: '✓' },
+} as const
+const risk = computed(() => (result.value ? RISK[result.value.verdict.level] : null))
+
+function insulationLabel(r: AnalysisResults) {
+  const p = r.parameters
+  return p.insulation === 'none' ? INSULATION_TYPES.none.label : `${p.insulation_thickness_mm} mm ${INSULATION_TYPES[p.insulation].label.toLowerCase()}`
+}
+function saveScenario() {
+  if (result.value && !store.resultsStale && comparison.value.length < 4) {
+    comparison.value.push(JSON.parse(JSON.stringify(result.value)))
+  }
+}
+function exportResult() {
+  const r = result.value
+  if (!r) return
+  const metadata = Object.entries(r.parameters).map(([key, value]) => '# ' + key + ',' + value).join('\n')
+  const csv = '# Frost pipe simulation\n# mode,' + r.mode + '\n' + metadata +
+    '\ntime_hours,t_min_water_c,t_avg_water_c,t_max_water_c,ice_fraction\n' +
+    r.series.map(p => [p.time_hours, p.t_min_water_c, p.t_avg_water_c, p.t_max_water_c, p.ice_fraction].join(',')).join('\n')
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = 'frost-pipe-results.csv'
+  link.click()
+  URL.revokeObjectURL(url)
+}
 </script>
 
 <template>
-  <div class="min-h-screen text-grey-900">
-    <!-- Header -->
-    <header class="bg-white border-b border-grey-200 sticky top-0 z-50">
-      <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <img src="/pipe.svg" alt="" class="w-8 h-8" />
-          <div>
-            <h1 class="text-xl font-semibold text-grey-900">
-              Pipe Freeze-Risk Analyser
-            </h1>
-            <p class="text-xs text-grey-500 tracking-wide">Powered by Quanscient Allsolve</p>
-          </div>
-        </div>
-
-        <a
-          href="https://quanscient.com"
-          target="_blank"
-          class="text-sm text-primary-500 hover:text-primary-700 font-medium transition-colors"
-        >
-          quanscient.com →
-        </a>
+  <div class="frost-app">
+    <header class="topbar">
+      <div class="brand"><span class="brand-symbol" aria-hidden="true">✳</span><span>frost<span class="brand-dot">.</span></span></div>
+      <div class="qs-brand" aria-label="Powered by Quanscient Allsolve">
+        <svg class="qs-logo" viewBox="0 0 1040 201" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path fill="currentColor" d="m228.09,143.88l-16.7-16.66-.07-.07-7.88-7.86-4.08-4.08-.46-.46h0s-20.51-20.53-20.51-20.53c-.53-.59-1.61-.42-2.06.34l-6.96,21.25-.06.18-.11.34c-.26.44-.24.95.07,1.29l5.91,6.61c.53.59,1.59.41,2.06-.32l.04-.07.04-.09,1.91-3.93c.44-.79,1.55-.99,2.09-.39l.23.21,6.36,6.37.22.22,11.98,12,.23.23,6.57,6.58c.7.7,1.65,1.09,2.64,1.09h17.63c1.18,0,1.77-1.43.94-2.26Zm-56.68-96.9c-28.33-.36-51.36,22.68-50.99,51,.36,27.7,22.85,49.8,50.55,49.69,7.99-.03,15.54-1.93,22.24-5.27.82-.41,1-1.49.36-2.14l-10.42-10.42c-.5-.5-1.23-.67-1.9-.45-3.46,1.13-7.17,1.72-11.02,1.66-17.93-.28-33.05-15.53-33.19-33.46-.14-18.87,15.22-34.18,34.11-33.98,18.13.2,33.33,15.57,33.34,33.69,0,3.9-.66,7.64-1.87,11.12-.24.68-.07,1.43.44,1.94l10.35,10.35c.64.64,1.71.48,2.12-.32,3.49-6.76,5.49-14.4,5.58-22.51.3-27.39-22.3-50.56-49.69-50.9Zm720.1,31h-19.4c-1.4,0-2.41-1.06-2.41-2.23v-9.64c0-1.17,1.01-2.23,2.41-2.23h55.42c1.39,0,2.41,1.06,2.41,2.23v9.64c0,1.18-1.02,2.23-2.41,2.23h-19.4v65.93c0,1.18-1.14,2.23-2.41,2.23h-11.79c-1.27,0-2.41-1.06-2.41-2.23v-65.93Zm-109.95-13.16c0-1.17,1.14-2.11,2.41-2.11h3.17l52.76,51.94h.12v-48.54c0-1.17,1.02-2.23,2.41-2.23h11.67c1.27,0,2.41,1.06,2.41,2.23v79.09c0,1.18-1.14,2.12-2.41,2.12h-3.04l-53.01-53.95h-.13v50.53c0,1.18-1.01,2.23-2.41,2.23h-11.54c-1.27,0-2.41-1.06-2.41-2.23v-79.09Zm-74.57,1.29c0-1.17,1.01-2.23,2.41-2.23h51.62c1.39,0,2.41,1.06,2.41,2.23v9.64c0,1.18-1.02,2.23-2.41,2.23h-37.54v19.27h31.32c1.27,0,2.41,1.06,2.41,2.23v9.75c0,1.29-1.14,2.23-2.41,2.23h-31.32v20.57h37.54c1.39,0,2.41,1.06,2.41,2.23v9.64c0,1.18-1.02,2.23-2.41,2.23h-51.62c-1.4,0-2.41-1.06-2.41-2.23v-77.8Zm-39.69,0c0-1.17,1.14-2.23,2.41-2.23h11.79c1.27,0,2.41,1.06,2.41,2.23v77.8c0,1.18-1.14,2.23-2.41,2.23h-11.79c-1.27,0-2.41-1.06-2.41-2.23v-77.8Zm-47.43-3.41c12.81,0,22.06,3.76,30.69,10.93,1.14.94,1.14,2.35.13,3.29l-7.74,7.4c-.89.94-2.15.94-3.17,0-5.33-4.35-12.43-6.93-19.53-6.93-16.23,0-28.28,12.57-28.28,27.39s12.17,27.15,28.41,27.15c7.61,0,14.08-2.7,19.4-6.7,1.02-.82,2.41-.7,3.17,0l7.86,7.52c1.01.82.76,2.35-.13,3.17-8.62,7.76-19.53,11.4-30.82,11.4-25.37,0-45.78-18.69-45.78-42.19s20.42-42.43,45.78-42.43Zm-113.25,71.92l4.57-7.29c1.01-1.64,3.17-1.64,4.31-.82.63.35,10.91,7.29,19.15,7.29,6.59,0,11.54-4,11.54-9.05,0-5.99-5.45-10.11-16.11-14.1-11.92-4.47-23.84-11.52-23.84-25.38,0-10.46,8.37-22.56,28.54-22.56,12.94,0,22.83,6.11,25.36,7.87,1.27.7,1.65,2.7.76,3.88l-4.82,6.7c-1.01,1.41-2.92,2.35-4.44,1.41-1.02-.59-10.65-6.47-17.63-6.47s-11.16,4.47-11.16,8.23c0,5.52,4.7,9.28,14.97,13.16,12.3,4.58,26.51,11.4,26.51,26.56,0,12.11-11.29,23.27-29.17,23.27-15.98,0-25.36-6.93-27.9-9.17-1.14-1.06-1.78-1.65-.64-3.53Zm-92.83-69.81c0-1.17,1.14-2.11,2.41-2.11h3.17l52.76,51.94h.12v-48.54c0-1.17,1.02-2.23,2.41-2.23h11.67c1.27,0,2.41,1.06,2.41,2.23v79.09c0,1.18-1.14,2.12-2.41,2.12h-3.04l-53.01-53.95h-.13v50.53c0,1.18-1.01,2.23-2.41,2.23h-11.54c-1.27,0-2.41-1.06-2.41-2.23v-79.09Zm-40.2,53.24l-12.68-25.85h-.38l-12.43,25.85h25.49Zm-54.79,25.03l39.44-79.09c.38-.7,1.01-1.29,2.16-1.29h1.27c1.27,0,1.77.59,2.15,1.29l39.06,79.09c.76,1.53-.25,3.05-2.16,3.05h-11.03c-1.9,0-2.79-.7-3.68-2.35l-6.22-12.69h-37.92l-6.21,12.69c-.51,1.17-1.65,2.35-3.68,2.35h-11.03c-1.9,0-2.92-1.53-2.16-3.05Zm-79.01-76.98c0-1.17,1.14-2.23,2.41-2.23h12.05c1.4,0,2.41,1.06,2.41,2.23v48.07c0,9.99,7.35,17.86,18.39,17.86s18.52-7.87,18.52-17.75v-48.19c0-1.17,1.01-2.23,2.41-2.23h12.05c1.27,0,2.41,1.06,2.41,2.23v48.89c0,17.86-15.34,32.32-35.38,32.32s-35.26-14.46-35.26-32.32v-48.89Z"/>
+        </svg>
+        <span class="qs-allsolve">Allsolve</span>
       </div>
     </header>
-
-    <!-- Main Content -->
-    <main class="max-w-7xl mx-auto px-6 py-6">
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <!-- Left Panel: Inputs -->
-        <div class="lg:col-span-1">
+    <main class="workspace">
+      <button class="config-fab" @click="sidebarOpen = !sidebarOpen" :aria-expanded="sidebarOpen" aria-label="Open configuration panel">
+        <svg width="15" height="12" viewBox="0 0 15 12" fill="none"><path d="M1 1h13M1 6h9M1 11h13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <span>Configure</span>
+      </button>
+      <div class="sidebar-backdrop" :class="{visible: sidebarOpen}" @click="sidebarOpen = false"></div>
+      <div class="tri-layout">
+        <aside class="setup-panel" :class="{open: sidebarOpen}">
+          <button class="sidebar-close" @click="sidebarOpen = false" aria-label="Close panel">&times;</button>
+          <div class="panel-heading"><h2>Configure your pipe</h2><span class="step-number">01</span></div>
           <ParameterPanel />
-        </div>
+        </aside>
 
-        <!-- Center Panel: Cross-section & Verdict -->
-        <div class="lg:col-span-1 space-y-6">
-          <div class="card p-4 h-[380px]">
-            <GeometryViewer />
-          </div>
-          <VerdictCard />
-        </div>
-
-        <!-- Right Panel: Results Chart -->
-        <div class="lg:col-span-1">
-          <div class="card p-6 h-full min-h-[500px]">
-            <h2 class="text-base font-semibold text-grey-900 mb-4 flex items-center gap-2">
-              <svg class="w-5 h-5 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-              </svg>
-              Water Temperature &amp; Ice
-            </h2>
-
-            <div v-if="showResults">
-              <ResultsChart />
-            </div>
-
-            <div v-else class="h-[400px] flex items-center justify-center text-grey-400">
-              <div class="text-center">
-                <svg class="w-12 h-12 mx-auto mb-3 text-grey-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"/>
-                </svg>
-                <p class="text-sm font-medium text-grey-500">Run an analysis to see results</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Pipe model: 3D view and lengthwise section -->
-      <section class="mt-6 card p-6" aria-labelledby="pipe-model-heading">
-        <h2 id="pipe-model-heading" class="text-base font-semibold text-grey-900 mb-4">Pipe model</h2>
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div class="lg:col-span-2 h-[460px]">
-            <PipeViewer3D />
-          </div>
-          <div class="space-y-4">
+        <!-- Column 2: 3D models stacked -->
+        <div class="model-column">
+          <div class="model-col-head"><p class="eyebrow">PIPE MODEL</p><h3>Cross-section &amp; geometry</h3></div>
+          <div class="pipe-3d-wrap"><Suspense><PipeViewer3D /></Suspense></div>
+          <div class="pipe-side-stack">
+            <!-- Front cross-section includes the material legend -->
+            <div class="pipe-front-wrap"><GeometryViewer /></div>
             <PipeSideSection />
-            <MaterialLegend />
-            <p class="text-xs text-grey-600">
-              Section faces are hatched by material — 45° lines for metals (dashed alternate for copper),
-              cross-hatching for plastics, wavy, zigzag or cell symbols for insulation, dashes for water and
-              crystals for ice — so layers read without relying on colour.
-            </p>
           </div>
         </div>
-      </section>
 
-      <!-- Info Section -->
-      <section class="mt-8 card p-8">
-        <h2 class="text-lg font-semibold text-grey-900 mb-6">The Physics</h2>
-
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 text-sm">
-          <div>
-            <h3 class="font-semibold text-primary-600 mb-2">Heat conduction with freezing</h3>
-            <div class="font-mono bg-grey-50 border border-grey-200 p-3 rounded-lg text-grey-800 text-xs">
-              ρCₚ,eff ∂T/∂t = ∇·(k∇T)<br />
-              ρCₚ,eff = ρCₚ + ρL·e^(−((T−0°C)/ΔT)²)/(ΔT√π)
+        <div class="results-panel">
+          <div v-if="store.resultsStale" class="stale-notice" role="status">Parameters changed. Run again to update the results below.</div>
+          <template v-if="result && risk">
+            <section class="risk-card" :class="'risk-' + risk.key">
+              <div class="risk-icon" aria-hidden="true">{{ risk.icon }}</div>
+              <div class="risk-copy"><p class="eyebrow">SIMULATION ASSESSMENT</p><h2>{{ risk.title }}</h2><p>{{ result.verdict.headline }}</p></div>
+              <span class="engine-badge">{{ result.mode === 'simulation' ? 'ALLSOLVE FEM' : 'QUICK ESTIMATE' }}</span>
+            </section>
+            <div class="metrics-grid">
+              <div class="metric"><p>Critical outside temperature</p><strong>{{ formatTemperature(result.critical_ambient_c) }}</strong><span>{{ result.critical_note ?? 'Blocks within the ' + result.parameters.cold_snap_hours + ' h cold snap below this' }}</span></div>
+              <div class="metric"><p>First ice</p><strong>{{ formatHours(result.t_onset_hours) }}</strong><span>At {{ result.parameters.outside_temp_c }} °C outside</span></div>
+              <div class="metric"><p>Blocked</p><strong>{{ formatHours(result.t_blockage_hours) }}</strong><span>90% of the water is ice</span></div>
             </div>
-            <p class="mt-2 text-grey-600">
-              Water, pipe wall and insulation solved in 3D. The latent heat of freezing (334 kJ/kg) is
-              added as an apparent heat capacity around 0°C.
-            </p>
-          </div>
 
-          <div>
-            <h3 class="font-semibold text-primary-600 mb-2">Heat loss to the surroundings</h3>
-            <div class="font-mono bg-grey-50 border border-grey-200 p-3 rounded-lg text-grey-800 text-xs">
-              q = h (T_surface − T_surroundings)
-            </div>
-            <p class="mt-2 text-grey-600">
-              The surroundings and h depend on where the pipe is: outside air with a 3 m/s wind, a wall
-              cavity between indoor and outside temperature, or soil that cools slowly from the surface.
-              h is estimated from convection and radiation at the outside temperature. A drip adds warm
-              water, modelled as a heat source.
-            </p>
-          </div>
+            <section class="assumptions-card">
+              <div class="card-heading"><div><p class="eyebrow">CONDITIONS USED IN THIS RUN</p><h2>Verdict details &amp; advice</h2></div></div>
+              <div class="derived-values"><span>External heat transfer <b>{{ result.h_out.toFixed(1) }} W/m²·K</b></span><span>Surroundings <b>{{ formatTemperature(result.surroundings_c) }}</b></span></div>
+              <ul class="verdict-list"><li v-for="line in result.verdict.details" :key="line">{{ line }}</li></ul>
+              <div v-if="result.verdict.actions.length" class="verdict-actions"><h3>What to do</h3><ul><li v-for="action in result.verdict.actions" :key="action">{{ action }}</li></ul></div>
+              <details><summary>Model assumptions and limits</summary><ul><li v-for="assumption in [...result.assumptions, ...result.verdict.caveats]" :key="assumption">{{ assumption }}</li></ul></details>
+            </section>
 
-          <div>
-            <h3 class="font-semibold text-primary-600 mb-2">What the numbers mean</h3>
-            <ul class="space-y-1 text-grey-600">
-              <li><span class="text-grey-900 font-medium">First ice:</span> coldest water reaches 0°C</li>
-              <li><span class="text-grey-900 font-medium">Blocked:</span> 90% of the water is frozen</li>
-              <li><span class="text-grey-900 font-medium">Critical outside temperature:</span> the outside temperature at which the pipe is blocked by the end of the cold snap</li>
-            </ul>
-          </div>
+            <section class="chart-card">
+              <div class="card-heading"><div><p class="eyebrow">THERMAL RESPONSE</p><h2>How fast does the water cool?</h2></div><button class="text-button" type="button" @click="exportResult">Export CSV ↗</button></div>
+              <ResultsChart :results="result" />
+              <div class="result-actions"><button type="button" class="outline-button" :disabled="store.resultsStale || comparison.length >= 4 || store.isRunning" @click="saveScenario">+ Save scenario for comparison</button></div>
+            </section>
+
+            <section v-if="comparison.length" class="comparison-card">
+              <div class="card-heading"><div><p class="eyebrow">EXPLORE THE TRADEOFFS</p><h2>Scenario comparison</h2></div><button type="button" class="text-button" @click="comparison = []">Clear</button></div>
+              <div class="table-scroll"><table><thead><tr><th>Scenario</th><th>Ambient</th><th>Insulation</th><th>Flow</th><th>Exposure</th><th>First ice</th><th>Blocked</th><th></th></tr></thead><tbody><tr v-for="(scenario, index) in comparison" :key="index"><td>{{ index + 1 }} · {{ scenario.mode === 'demo' ? 'Demo' : 'Allsolve' }}</td><td>{{ scenario.parameters.outside_temp_c }} °C</td><td>{{ insulationLabel(scenario) }}</td><td>{{ scenario.parameters.drip_flow_lpm }} L/min</td><td>{{ scenario.parameters.cold_snap_hours }} h</td><td>{{ formatHours(scenario.t_onset_hours) }}</td><td>{{ formatHours(scenario.t_blockage_hours) }}</td><td><button type="button" class="text-button" :aria-label="'Remove scenario ' + (index + 1)" @click="comparison.splice(index, 1)">×</button></td></tr></tbody></table></div>
+            </section>
+          </template>
+          <section v-else class="empty-card"><div class="empty-symbol">◎</div><h2>Understand your cold-weather exposure</h2><p>Set up your pipe and the cold snap, then run the model to see when ice forms and when the pipe blocks.</p></section>
         </div>
-      </section>
-    </main>
-
-    <!-- Footer -->
-    <footer class="border-t border-grey-200 mt-8 py-5 bg-white">
-      <div class="max-w-7xl mx-auto px-6 text-center text-xs text-grey-500">
-        <p>Built with Vue 3, three.js, Chart.js and the Quanscient Allsolve SDK</p>
       </div>
-    </footer>
+      <section class="physics-note">
+        <div><p class="eyebrow">ABOUT THIS MODEL</p><h2>Heat escapes. Flow replenishes it.</h2></div>
+        <div><h3>What is calculated</h3><p>An exposed pipe in constant outside air at 3 m/s. The water cools through the pipe wall, insulation, convection and radiation, then freezes from the wall inward. A drip supplies fresh water at the initial temperature.</p></div>
+        <div><h3>First ice and blockage</h3><p>First ice is when the coldest water reaches 0 °C. The pipe counts as blocked once 90% of the water is ice. Bursting is not modelled.</p></div>
+        <div><h3>Critical outside temperature</h3><p>The outside temperature at which the pipe just blocks by the end of the cold snap, found by repeating the run across a range of outside temperatures.</p></div>
+      </section>
+      <footer class="page-footer"><span>FROST · Water infrastructure resilience</span><span>Vue 3 + Quanscient Allsolve</span></footer>
+    </main>
   </div>
 </template>
+
+<style>
+/* ── Design tokens ───────────────────────────────────────────────────────────── */
+.frost-app {
+  --ink: #0e1c28;
+  --ink-2: #1b3146;
+  --muted: #5c6e7c;
+  --subtle: #8fa2b0;
+  --line: rgba(14, 28, 40, 0.07);
+  --teal: #0a9688;
+  --teal-dk: #077a6d;
+  --glass: rgba(255,255,255,0.74);
+  --glass-hi: rgba(255,255,255,0.88);
+  --glass-bd: rgba(255,255,255,0.58);
+  --shadow-sm: 0 1px 3px rgba(14,28,40,0.05), 0 0 0 1px rgba(14,28,40,0.04);
+  --shadow-md: 0 4px 24px rgba(14,28,40,0.08), 0 1px 6px rgba(14,28,40,0.04), inset 0 1px 0 rgba(255,255,255,0.82);
+  --shadow-lg: 0 8px 40px rgba(14,28,40,0.1), 0 2px 10px rgba(14,28,40,0.05), inset 0 1px 0 rgba(255,255,255,0.9);
+  --r: 16px;
+  --r-sm: 10px;
+  --r-xs: 7px;
+  font-size: 16px;
+  color: var(--ink);
+  background: #eaecf2;
+  min-height: 100dvh;
+  font-family: 'Outfit', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Topbar ──────────────────────────────────────────────────────────────────── */
+.topbar {
+  background: rgba(11,22,35,0.90);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  color: #fff;
+  min-height: 66px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 max(28px, calc((100vw - 1456px) / 2));
+  gap: 20px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.brand { display:flex; align-items:center; gap:10px; font-size:26px; font-weight:700; letter-spacing:-1px; }
+.brand-symbol { color:#4ed9cf; font-size:28px; font-weight:400; }
+.brand-dot { color:#4ed9cf; }
+.qs-brand {
+  display: flex; align-items: center; gap: 9px;
+  color: rgba(255,255,255,0.55);
+  padding-left: 20px;
+  border-left: 1px solid rgba(255,255,255,0.1);
+}
+.qs-logo { height: 18px; width: auto; color: rgba(255,255,255,0.7); flex-shrink: 0; }
+.qs-allsolve {
+  font-size: 13px; font-weight: 500; letter-spacing: .2px;
+  color: rgba(255,255,255,0.55); white-space: nowrap;
+}
+.status-dot {
+  width:6px; height:6px; border-radius:50%; background:#4ed9cf;
+  box-shadow: 0 0 8px rgba(78,217,207,0.55);
+  animation: blink 2.6s ease-in-out infinite;
+}
+@keyframes blink { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.55;transform:scale(.8)} }
+
+/* ── Workspace ───────────────────────────────────────────────────────────────── */
+.workspace { max-width:1456px; padding:28px 28px 64px; margin:0 auto; }
+.eyebrow { font-size:11px; letter-spacing:1.5px; font-weight:600; color:var(--muted); margin:0 0 8px; text-transform:uppercase; }
+
+/* ── Three-column layout ─────────────────────────────────────────────────────── */
+.config-fab {
+  display: none; /* visible only on tablet/mobile */
+  align-items: center; gap: 8px;
+  background: var(--teal); border: none; border-radius: var(--r-sm);
+  color: #fff; font-family: inherit; font-size: 14px; font-weight: 600;
+  padding: 10px 16px; cursor: pointer;
+  box-shadow: 0 2px 12px rgba(10,150,136,0.28);
+  margin-bottom: 14px; transition: background .15s, transform .14s;
+}
+.config-fab:hover { background: var(--teal-dk); transform: translateY(-1px); }
+.config-fab:active { transform: translateY(0); }
+
+.sidebar-backdrop {
+  display: none;
+  position: fixed; inset: 0; z-index: 199;
+  background: rgba(14,28,40,0.38);
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+}
+.sidebar-backdrop.visible { display: block; }
+
+.sidebar-close {
+  display: none; /* shown on tablet/mobile */
+  margin-left: auto; background: none; border: 0;
+  font-size: 20px; color: var(--muted); cursor: pointer; padding: 4px 8px;
+  line-height: 1; border-radius: var(--r-xs); transition: color .13s;
+}
+.sidebar-close:hover { color: var(--ink); }
+
+.tri-layout { display: grid; grid-template-columns: 280px 420px minmax(0,1fr); gap: 18px; align-items: start; }
+
+/* Column 2 – 3D model and 2D sections (taller than the viewport, so not sticky) */
+.model-column {
+  display: flex; flex-direction: column; gap: 12px;
+}
+.model-col-head { margin-bottom: 2px; }
+.model-col-head h3 { font-size: 15px; font-weight: 600; margin: 4px 0 0; letter-spacing: -.2px; }
+/* Min height, not fixed: the viewer's canvas has its own minimum, so a fixed
+   box would clip the controls hint below it */
+.pipe-3d-wrap {
+  display: flex; flex-direction: column;
+  min-height: 420px; border-radius: 12px;
+  background: rgba(14,28,40,0.02);
+}
+.pipe-3d-wrap > * { flex: 1; }
+.pipe-side-stack { display: flex; flex-direction: column; gap: 10px; }
+.pipe-front-wrap { height: 380px; }
+
+/* ── Glass card base ─────────────────────────────────────────────────────────── */
+.setup-panel,
+.chart-card,
+.comparison-card,
+.empty-card,
+.assumptions-card {
+  background: var(--glass);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid var(--glass-bd);
+  border-radius: var(--r);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+
+/* ── Setup panel ─────────────────────────────────────────────────────────────── */
+.setup-panel { padding:20px; }
+.panel-heading { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+.panel-heading h2, .card-heading h2 { font-size:16px; font-weight:600; margin:0; letter-spacing:-.2px; }
+.step-number { font-size:12px; color:var(--subtle); font-family:'Outfit',monospace; font-variant-numeric:tabular-nums; }
+
+/* Sections */
+.input-section { padding:15px 0 13px; border-bottom:1px solid var(--line); }
+.input-section h3 { font-size:13px; font-weight:600; display:flex; gap:7px; align-items:center; margin:0 0 11px; color:var(--ink-2); }
+.section-icon { color:var(--teal); font-size:15px; width:17px; text-align:center; opacity:.9; }
+.setup-panel label { font-size:13px; color:var(--muted); display:block; line-height:1.5; font-weight:500; }
+.input-hint { color:var(--subtle); font-size:13px; line-height:1.65; margin:7px 0 0; }
+.exposure-note { padding:9px 11px; border-radius:var(--r-xs); background:rgba(10,150,136,0.06); color:#3a7570; font-size:13px; line-height:1.65; margin:0 0 10px; border:1px solid rgba(10,150,136,0.12); }
+
+.engine-section { padding:15px 0 17px; }
+
+/* Run button */
+.run-button {
+  width:100%; background:linear-gradient(135deg,var(--teal) 0%,#088478 100%);
+  color:#fff; border:0; border-radius:var(--r-sm); padding:13px 15px;
+  display:flex; align-items:center; justify-content:space-between;
+  font-size:15px; font-weight:600; font-family:inherit; cursor:pointer;
+  box-shadow:0 2px 14px rgba(10,150,136,0.32), inset 0 1px 0 rgba(255,255,255,0.14);
+  transition:all .17s ease; letter-spacing:.1px;
+}
+.run-button:hover { background:linear-gradient(135deg,#0ba898 0%,#098880 100%); transform:translateY(-1px); box-shadow:0 5px 20px rgba(10,150,136,0.38), inset 0 1px 0 rgba(255,255,255,0.14); }
+.run-button:active { transform:translateY(0); }
+
+button:disabled { opacity:.42; cursor:not-allowed; }
+input:disabled, select:disabled { opacity:.55; }
+button:focus-visible, select:focus-visible, a:focus-visible { outline:2px solid var(--teal); outline-offset:3px; border-radius:4px; }
+
+/* Progress */
+.progress-area { margin-top:13px; font-size:14px; color:var(--muted); }
+.progress-area progress { display:block; width:100%; height:3px; accent-color:var(--teal); margin-bottom:7px; border:none; border-radius:99px; background:rgba(14,28,40,0.07); }
+.error-message { background:rgba(175,55,35,0.07); color:#9e3420; border:1px solid rgba(175,55,35,0.13); padding:11px 13px; margin:12px 0 0; font-size:14px; line-height:1.6; border-radius:var(--r-xs); }
+
+/* ── Results panel ───────────────────────────────────────────────────────────── */
+.results-panel { display:flex; flex-direction:column; gap:15px; min-width:0; }
+.stale-notice { font-size:14px; color:#7a6020; background:rgba(235,195,60,0.1); border:1px solid rgba(200,160,35,0.2); padding:11px 15px; border-radius:var(--r-sm); backdrop-filter:blur(8px); }
+
+/* Risk card */
+.risk-card {
+  display:flex; align-items:center; gap:15px;
+  background:rgba(215,242,237,0.78); border:1px solid rgba(10,150,136,0.17);
+  border-radius:var(--r); padding:19px 22px; position:relative;
+  backdrop-filter:blur(18px) saturate(160%); -webkit-backdrop-filter:blur(18px) saturate(160%);
+  box-shadow:var(--shadow-sm), inset 0 1px 0 rgba(255,255,255,0.7);
+}
+.risk-freezing { background:rgba(255,234,224,0.82); border-color:rgba(195,80,50,0.17); }
+.risk-near    { background:rgba(255,247,218,0.82); border-color:rgba(195,150,28,0.2); }
+.risk-icon {
+  font-size:19px; width:40px; height:40px; display:flex; align-items:center; justify-content:center;
+  background:rgba(255,255,255,0.82); color:var(--teal); border-radius:11px; flex-shrink:0;
+  box-shadow:0 2px 8px rgba(14,28,40,0.09); border:1px solid rgba(255,255,255,0.9);
+}
+.risk-freezing .risk-icon { color:#c0502a; }
+.risk-near .risk-icon    { color:#ae7a14; }
+.risk-copy { min-width:0; }
+.risk-copy .eyebrow { font-size:11px; margin-bottom:4px; }
+.risk-copy h2 { font-size:18px; font-weight:700; letter-spacing:-.4px; margin:0 0 5px; }
+.risk-copy > p:last-child { font-size:14px; line-height:1.65; color:var(--muted); margin:0; max-width:600px; }
+.engine-badge { font-size:11px; letter-spacing:.5px; border:1px solid rgba(14,28,40,0.09); background:rgba(255,255,255,0.68); backdrop-filter:blur(8px); padding:5px 8px; border-radius:6px; white-space:nowrap; margin-left:auto; align-self:flex-start; color:var(--muted); }
+
+/* Metrics */
+.metrics-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+.metric {
+  padding:17px 18px;
+  background:var(--glass); backdrop-filter:blur(20px) saturate(160%); -webkit-backdrop-filter:blur(20px) saturate(160%);
+  border:1px solid var(--glass-bd); border-radius:var(--r);
+  box-shadow:var(--shadow-md);
+}
+.metric p { margin:0 0 8px; font-size:13px; color:var(--muted); font-weight:500; }
+.metric strong { display:block; font-size:25px; font-weight:700; line-height:1.2; letter-spacing:-.7px; margin-bottom:6px; }
+.metric small { font-size:14px; font-weight:400; letter-spacing:0; color:var(--muted); }
+.metric > span { display:block; font-size:12px; color:var(--subtle); line-height:1.6; }
+
+/* Card heading */
+.card-heading { display:flex; justify-content:space-between; align-items:center; gap:14px; padding:20px 22px 0; }
+.card-heading .eyebrow { font-size:11px; margin-bottom:5px; }
+.subtle-tag { font-size:12px; background:rgba(14,28,40,0.04); border:1px solid rgba(14,28,40,0.07); border-radius:7px; padding:5px 9px; white-space:nowrap; color:var(--muted); }
+
+/* Chart */
+.text-button { background:none; border:0; font-size:13px; color:var(--teal); padding:5px 0; cursor:pointer; white-space:nowrap; font-family:inherit; font-weight:500; }
+.text-button:hover { text-decoration:underline; }
+.result-actions { margin-top:14px; }
+.result-actions { display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--line); padding:14px 22px; gap:12px; }
+.outline-button {
+  border: 1px solid rgba(10,150,136,0.35); border-radius: var(--r-xs);
+  color: var(--teal); padding: 8px 13px; font-size: 13px; font-weight: 500;
+  font-family: inherit; background: rgba(10,150,136,0.06); cursor: pointer;
+  transition: all .15s ease;
+}
+.outline-button:hover { background: rgba(10,150,136,0.12); border-color: rgba(10,150,136,0.5); }
+.outline-button:active { background: rgba(10,150,136,0.18); }
+.result-actions a { color:var(--teal); font-size:13px; text-decoration:none; font-weight:500; }
+.result-actions a:hover { text-decoration:underline; }
+
+/* Assumptions */
+.assumptions-card { padding-bottom:16px; }
+.derived-values { display:grid; grid-template-columns:1fr 1fr; gap:13px; padding:17px 22px; font-size:13px; color:var(--muted); }
+.derived-values b { display:block; font-size:14px; font-weight:500; margin-top:3px; color:var(--ink); }
+.assumptions-card details { margin:0 22px; font-size:14px; color:var(--muted); }
+.assumptions-card summary { cursor:pointer; color:var(--teal); font-weight:500; }
+.assumptions-card ul { list-style:disc; padding-left:17px; margin-top:10px; line-height:1.8; }
+.assumptions-card li { margin-bottom:5px; }
+.verdict-list, .verdict-actions ul { list-style:disc; padding-left:17px; margin:0; font-size:14px; line-height:1.8; color:var(--ink-2); }
+.verdict-list { margin:0 22px 14px; }
+.verdict-actions { margin:0 22px 14px; padding:11px 13px; border-radius:var(--r-xs); background:rgba(10,150,136,0.06); border:1px solid rgba(10,150,136,0.12); }
+.verdict-actions h3 { font-size:13px; font-weight:600; margin:0 0 6px; color:var(--teal-dk); }
+
+/* Comparison */
+.comparison-card { padding-bottom:10px; }
+.table-scroll { overflow-x:auto; padding:13px 22px 5px; }
+.comparison-card table { width:100%; border-collapse:collapse; font-size:14px; white-space:nowrap; text-align:left; }
+.comparison-card th { font-weight:500; color:var(--muted); border-bottom:1px solid var(--line); padding:9px 9px 9px 0; }
+.comparison-card td { padding:11px 9px 11px 0; border-bottom:1px solid var(--line); color:#3d5668; }
+
+/* Empty state */
+.empty-card { padding:100px 35px; text-align:center; color:var(--muted); }
+.empty-symbol { font-size:46px; color:rgba(10,150,136,0.32); margin-bottom:16px; }
+.empty-card h2 { font-size:18px; font-weight:600; color:var(--ink); }
+.empty-card p { max-width:440px; margin:10px auto 0; font-size:16px; line-height:1.8; }
+
+/* Physics note */
+.physics-note { margin-top:26px; display:grid; grid-template-columns:1.15fr 1fr 1fr 1fr; gap:28px; border-top:1px solid var(--line); padding:26px 0 30px; }
+.physics-note h2 { font-size:18px; letter-spacing:-.4px; font-weight:600; line-height:1.45; margin:0; max-width:210px; }
+.physics-note h3 { font-size:14px; font-weight:600; margin:0 0 7px; color:var(--ink-2); }
+.physics-note p:not(.eyebrow) { font-size:14px; line-height:1.85; color:var(--muted); margin:0; }
+
+/* Footer */
+.page-footer { display:flex; justify-content:space-between; padding:18px 0; border-top:1px solid var(--line); color:var(--subtle); font-size:12px; gap:15px; }
+
+
+/* ── Responsive ──────────────────────────────────────────────────────────────── */
+
+/* Desktop: all 3 columns, setup sticky */
+@media(min-width:1024px) {
+  .setup-panel { position:sticky; top:84px; }
+}
+
+/* Tablet (768–1023px): 3D + results columns, config becomes floating drawer */
+@media(max-width:1023px) {
+  .tri-layout { grid-template-columns: 300px minmax(0,1fr); gap:15px; }
+
+  /* Setup panel floats as a slide-in drawer */
+  .setup-panel {
+    position: fixed !important;
+    left: 0; top: 0; bottom: 0; z-index: 200;
+    width: 300px; max-width: 88vw;
+    border-radius: 0 var(--r) var(--r) 0;
+    overflow-y: auto;
+    transform: translateX(-100%);
+    transition: transform 0.28s cubic-bezier(0.16,1,0.3,1),
+                box-shadow 0.28s;
+    box-shadow: none;
+  }
+  .setup-panel.open {
+    transform: translateX(0);
+    box-shadow: 8px 0 40px rgba(14,28,40,0.18);
+  }
+
+  .config-fab { display: flex; }
+  .sidebar-close { display: block; }
+  .engine-badge { display:none; }
+  .physics-note { grid-template-columns:1fr 1fr; }
+}
+
+/* Mobile (<768px): single column, config floating drawer */
+@media(max-width:767px) {
+  .workspace { padding:18px 14px 44px; }
+  .topbar { padding:0 16px; min-height:60px; }
+  .tri-layout { grid-template-columns: 1fr; gap:13px; }
+  .pipe-3d-wrap { min-height:280px; }
+
+  .risk-card { padding:16px 16px; }
+  .metrics-grid { gap:9px; }
+  .card-heading { padding:16px 16px 0; }
+  .physics-note { gap:16px; }
+}
+
+@media(max-width:767px) {
+  .qs-brand { display: none; }
+}
+
+@media(max-width:540px) {
+  .metrics-grid { grid-template-columns:1fr; }
+  .metric { padding:14px 16px; }
+  .metric strong { font-size:24px; }
+  .risk-card { gap:12px; flex-wrap:wrap; }
+  .risk-copy h2 { font-size:16px; }
+  .risk-icon { width:36px; height:36px; font-size:17px; }
+  .physics-note { grid-template-columns:1fr; }
+  .physics-note h2 { max-width:none; }
+  .result-actions { flex-wrap:wrap; }
+  .subtle-tag { display:none; }
+}
+</style>

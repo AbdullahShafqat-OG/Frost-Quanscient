@@ -32,8 +32,15 @@ export const useAnalysisStore = defineStore('analysis', () => {
   // ============================================================================
 
   const isRunning = computed(() => status.value === 'running' || status.value === 'pending')
-  const hasResults = computed(() => results.value !== null)
-  const series = computed<SeriesPoint[]>(() => results.value?.series ?? [])
+  // Results belong to the inputs they were run with; once an input changes they are stale
+  const resultsStale = computed(() => {
+    const r = results.value
+    if (!r) return false
+    return (Object.keys(params.value) as (keyof PipeParams)[]).some(key => params.value[key] !== r.parameters[key])
+  })
+  // The 3D and section views read these, so they show no ice for inputs that haven't been run
+  const hasResults = computed(() => results.value !== null && !resultsStale.value)
+  const series = computed<SeriesPoint[]>(() => (hasResults.value ? results.value!.series : []))
 
   // ============================================================================
   // ACTIONS
@@ -166,6 +173,7 @@ export const useAnalysisStore = defineStore('analysis', () => {
 
     // Getters
     isRunning,
+    resultsStale,
     hasResults,
     series,
 

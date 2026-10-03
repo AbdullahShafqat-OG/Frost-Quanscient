@@ -13,25 +13,26 @@ import {
   type ChartData,
   type Plugin,
 } from 'chart.js'
-import { useAnalysisStore } from '@/stores/analysisStore'
+import type { AnalysisResults } from '@/types'
 import { formatHours } from '@/types'
 
 ChartJS.register(LinearScale, PointElement, LineElement, Tooltip, Legend, Filler)
 
-const store = useAnalysisStore()
+const props = defineProps<{ results: AnalysisResults }>()
 
-const COLOR_MIN = '#0369A1'
-const COLOR_AVG = '#6644D8'
-const INK_MUTED = '#757575'
-const GRID = 'rgba(224, 224, 224, 0.6)'
+const COLOR_MIN = '#0a9688'
+const COLOR_AVG = '#428bb8'
+const INK = '#1b3146'
+const INK_MUTED = '#5c6e7c'
+const GRID = 'rgba(14, 28, 40, 0.06)'
+const FONT = 'Outfit, system-ui, sans-serif'
 
 // Vertical event markers (first ice, blockage, end of cold snap), drawn on both charts
 const markers = computed(() => {
-  const r = store.results
-  if (!r) return []
-  const list = [{ x: r.parameters.cold_snap_hours, label: 'End of cold snap', color: '#9E9E9E' }]
-  if (r.t_onset_hours !== null) list.push({ x: r.t_onset_hours, label: 'First ice', color: '#0284C7' })
-  if (r.t_blockage_hours !== null) list.push({ x: r.t_blockage_hours, label: 'Blocked', color: '#DC2626' })
+  const r = props.results
+  const list = [{ x: r.parameters.cold_snap_hours, label: 'End of cold snap', color: '#8fa2b0' }]
+  if (r.t_onset_hours !== null) list.push({ x: r.t_onset_hours, label: 'First ice', color: '#428bb8' })
+  if (r.t_blockage_hours !== null) list.push({ x: r.t_blockage_hours, label: 'Blocked', color: '#c0502a' })
   return list
 })
 
@@ -53,8 +54,8 @@ const markerPlugin: Plugin<'line'> = {
       ctx.stroke()
       if (showLabels) {
         ctx.setLineDash([])
-        ctx.fillStyle = '#424242'
-        ctx.font = '10px Inter, sans-serif'
+        ctx.fillStyle = INK
+        ctx.font = `500 10px ${FONT}`
         const text = `${m.label} ${formatHours(m.x)}`
         const width = ctx.measureText(text).width
         const tx = Math.min(x + 4, chartArea.right - width)
@@ -73,35 +74,35 @@ const freezeLinePlugin: Plugin<'line'> = {
     const y = scales.y.getPixelForValue(0)
     if (y < chartArea.top || y > chartArea.bottom) return
     ctx.save()
-    ctx.strokeStyle = '#BDBDBD'
+    ctx.strokeStyle = '#ea7657'
     ctx.lineWidth = 1
     ctx.beginPath()
     ctx.moveTo(chartArea.left, y)
     ctx.lineTo(chartArea.right, y)
     ctx.stroke()
-    ctx.fillStyle = INK_MUTED
-    ctx.font = '10px Inter, sans-serif'
+    ctx.fillStyle = '#c0502a'
+    ctx.font = `500 10px ${FONT}`
     ctx.fillText('0°C', chartArea.left + 4, y - 4)
     ctx.restore()
   },
 }
 
-const xMax = computed(() => store.results?.window_hours ?? 1)
+const xMax = computed(() => props.results.window_hours ?? 1)
 
 const tempData = computed<ChartData<'line'>>(() => ({
   datasets: [
     {
       label: 'Coldest water',
-      data: store.series.map(p => ({ x: p.time_hours, y: p.t_min_water_c })),
+      data: props.results.series.map(p => ({ x: p.time_hours, y: p.t_min_water_c })),
       borderColor: COLOR_MIN,
       backgroundColor: COLOR_MIN,
-      borderWidth: 2,
+      borderWidth: 2.5,
       pointRadius: 0,
       pointHoverRadius: 4,
     },
     {
       label: 'Average water',
-      data: store.series.map(p => ({ x: p.time_hours, y: p.t_avg_water_c })),
+      data: props.results.series.map(p => ({ x: p.time_hours, y: p.t_avg_water_c })),
       borderColor: COLOR_AVG,
       backgroundColor: COLOR_AVG,
       borderWidth: 2,
@@ -116,9 +117,9 @@ const iceData = computed<ChartData<'line'>>(() => ({
   datasets: [
     {
       label: 'Ice fraction',
-      data: store.series.map(p => ({ x: p.time_hours, y: p.ice_fraction * 100 })),
+      data: props.results.series.map(p => ({ x: p.time_hours, y: p.ice_fraction * 100 })),
       borderColor: COLOR_MIN,
-      backgroundColor: 'rgba(3, 105, 161, 0.12)',
+      backgroundColor: 'rgba(10, 150, 136, 0.12)',
       borderWidth: 2,
       fill: 'origin',
       pointRadius: 0,
@@ -135,10 +136,11 @@ function baseOptions(yTitle: string, showXTitle: boolean): ChartOptions<'line'> 
     interaction: { mode: 'index', intersect: false },
     plugins: {
       tooltip: {
-        backgroundColor: 'rgba(33, 33, 33, 0.9)',
+        backgroundColor: 'rgba(11, 22, 35, 0.9)',
         padding: 10,
-        titleFont: { family: 'Inter' },
-        bodyFont: { family: 'Inter' },
+        cornerRadius: 8,
+        titleFont: { family: FONT },
+        bodyFont: { family: FONT },
         callbacks: {
           title: items => `t = ${formatHours(items[0].parsed.x)}`,
         },
@@ -149,14 +151,14 @@ function baseOptions(yTitle: string, showXTitle: boolean): ChartOptions<'line'> 
         type: 'linear',
         min: 0,
         max: xMax.value,
-        title: { display: showXTitle, text: 'Time (hours)', color: INK_MUTED, font: { family: 'Inter', size: 11 } },
-        grid: { color: GRID },
-        ticks: { color: INK_MUTED, font: { family: 'Inter', size: 10 } },
+        title: { display: showXTitle, text: 'Time (hours)', color: INK_MUTED, font: { family: FONT, size: 11 } },
+        grid: { display: false },
+        ticks: { color: INK_MUTED, font: { family: FONT, size: 10 } },
       },
       y: {
-        title: { display: true, text: yTitle, color: INK_MUTED, font: { family: 'Inter', size: 11 } },
+        title: { display: true, text: yTitle, color: INK_MUTED, font: { family: FONT, size: 11 } },
         grid: { color: GRID },
-        ticks: { color: INK_MUTED, font: { family: 'Inter', size: 10 } },
+        ticks: { color: INK_MUTED, font: { family: FONT, size: 10 } },
       },
     },
   }
@@ -167,7 +169,7 @@ const tempOptions = computed<ChartOptions<'line'>>(() => {
   opts.plugins!.legend = {
     display: true,
     position: 'bottom',
-    labels: { color: '#424242', boxWidth: 18, boxHeight: 2, font: { family: 'Inter', size: 11 } },
+    labels: { color: INK, usePointStyle: true, boxWidth: 8, padding: 20, font: { family: FONT, size: 11 } },
   }
   opts.plugins!.tooltip!.callbacks!.label = item =>
     `${item.dataset.label}: ${(item.parsed.y as number).toFixed(1)}°C`
@@ -189,18 +191,28 @@ const icePlugins = [markerPlugin]
 </script>
 
 <template>
-  <div class="space-y-3">
-    <div class="h-[280px]">
+  <div class="results-chart">
+    <div class="temp-chart">
       <Line :data="tempData" :options="tempOptions" :plugins="tempPlugins" />
     </div>
-    <div class="h-[150px]">
+    <div class="ice-chart">
       <Line :data="iceData" :options="iceOptions" :plugins="icePlugins" />
     </div>
-    <p class="text-xs text-grey-500">
-      At {{ store.results?.parameters.outside_temp_c }}°C outside ({{ store.results?.parameters.location }}).
-      <template v-if="store.results?.mode === 'demo'">
+    <p class="chart-caption">
+      At {{ results.parameters.outside_temp_c }}°C outside ({{ results.parameters.location }}).
+      <template v-if="results.mode === 'demo'">
         Demo estimate: lumped model, so coldest and average water coincide.
       </template>
     </p>
   </div>
 </template>
+
+<style scoped>
+.results-chart { padding: 16px 20px 0; display: flex; flex-direction: column; gap: 12px; }
+.temp-chart { height: 280px; }
+.ice-chart { height: 150px; }
+.chart-caption { margin: 0; font-size: 13px; color: #8fa2b0; }
+@media (max-width: 540px) {
+  .results-chart { padding-left: 10px; padding-right: 12px; }
+}
+</style>
