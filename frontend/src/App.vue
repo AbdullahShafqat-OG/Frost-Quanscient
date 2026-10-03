@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, onUnmounted, reactive, ref, watch, watchEffect } from 'vue'
-import PipeChart from '@/components/PipeChart.vue'
+import { computed, defineAsyncComponent, onUnmounted, reactive, ref, watch, watchEffect } from 'vue'
+import ResultsChart from '@/components/ResultsChart.vue'
 import SliderInput from '@/components/SliderInput.vue'
 import PipeSideSection from '@/components/PipeSideSection.vue'
 import MaterialLegend from '@/components/MaterialLegend.vue'
 import type { PipeParams, PipeResult } from '@/types/pipe'
+import { formatHours, formatTemperature } from '@/types'
 import { runEstimate, startJob, pollJob } from '@/api/analysis'
 import { useAnalysisStore } from '@/stores/analysisStore'
 
@@ -12,7 +13,7 @@ const PipeViewer3D = defineAsyncComponent(() => import('@/components/PipeViewer3
 const analysisStore = useAnalysisStore()
 
 const defaults: PipeParams = {
-  ambient_c: -20, water_c: 10, length_m: 20, diameter_mm: 25,
+  ambient_c: -20, water_c: 10, diameter_mm: 25,
   wall_mm: 2, material: 'copper', insulation_mm: 0, insulation_material: 'none',
   flow_l_min: 0, duration_h: 12,
 }
@@ -31,8 +32,8 @@ let pollTimer: ReturnType<typeof setTimeout> | undefined
 let requestController: AbortController | undefined
 const stale = computed(() => result.value !== null &&
   Object.keys(defaults).some(key => params[key as keyof PipeParams] !== result.value?.parameters[key as keyof PipeParams]))
-const title = computed(() => result.value?.risk === 'freezing' ? 'Freezing onset predicted' :
-  result.value?.risk === 'near' ? 'Close to freezing' : 'Above freezing during exposure')
+const RISK_TITLE = { freezing: 'Freezes', near: 'At risk', above: 'Safe' } as const
+const title = computed(() => result.value ? RISK_TITLE[result.value.risk] : '')
 watch(() => params.insulation_material, material => {
   if (material === 'none') params.insulation_mm = 0
   else if (params.insulation_mm === 0) params.insulation_mm = 20
@@ -42,22 +43,14 @@ watch(() => params.insulation_material, material => {
 watchEffect(() => {
   analysisStore.setParams({ ...params })
 })
-const summary = computed(() => {
-  const r = result.value
-  if (!r) return 'Set up a pipe and run a simulation to explore the conditions.'
-  if (r.freeze_hours !== null) return 'Water at the inner pipe wall reaches 0 °C after ' + formatTime(r.freeze_hours) + '. Bulk water may still be warmer. The calculation ends at first freezing onset.'
-  return 'The estimated water / inner-wall interface stays above 0 °C throughout the ' + r.parameters.duration_h + '-hour cold exposure.'
+// Ice in the 3D model belongs to the last run's inputs; drop it once they change
+watch(stale, isStale => {
+  if (isStale) analysisStore.clearResults()
 })
-function formatTime(hours: number | null) {
-  if (hours === null) return 'No onset'
-  if (hours * 60 < 1) return Math.round(hours * 3600) + ' sec'
-  if (hours < 1) return (hours * 60).toFixed(1) + ' min'
-  return hours.toFixed(2) + ' hr'
-}
 function applyPreset(preset: 'exposed' | 'insulated' | 'flowing') {
   Object.assign(params, defaults)
   if (preset === 'insulated') { params.insulation_material = 'foam_wrap'; params.insulation_mm = 30 }
-  if (preset === 'flowing') params.flow_l_min = 2
+  if (preset === 'flowing') params.flow_l_min = 1
   error.value = ''
 }
 async function poll(id: string, snapshot: PipeParams) {
@@ -68,7 +61,7 @@ async function poll(id: string, snapshot: PipeParams) {
     progress.value = job.progress
     if (job.status === 'completed') {
       result.value = job.result!
-      analysisStore.updateFromResult(snapshot, job.result!.rawSeries ?? [])
+      analysisStore.updateFromResult(snapshot, job.result!.raw.series)
       busy.value = false
     } else if (job.status === 'failed') {
       throw new Error(job.message)
@@ -86,6 +79,8 @@ async function run() {
   if (busy.value || !form.value?.reportValidity()) return
   busy.value = true
   error.value = ''
+  result.value = null
+  analysisStore.clearResults()
   progress.value = 0
   message.value = engine.value === 'estimate' ? 'Calculating pipe cooling…' : 'Connecting to Allsolve…'
   requestController = new AbortController()
@@ -95,7 +90,7 @@ async function run() {
       const response = await runEstimate(snapshot, requestController.signal)
       if (!disposed) {
         result.value = response
-        analysisStore.updateFromResult(snapshot, response.rawSeries ?? [])
+        analysisStore.updateFromResult(snapshot, response.raw.series)
         busy.value = false
       }
     } else {
@@ -117,11 +112,10 @@ function saveScenario() {
 function exportResult() {
   if (!result.value) return
   const r = result.value
-  const metadata = Object.entries(r.parameters).map(([key, value]) => '# ' + key + ',' + value).join('\n')
-  const csv = '# Frost pipe simulation\n# engine,' + r.engine +
-    '\n# inner-wall freezing onset only; no blockage or bursting prediction\n# wind_m_s,3\n' + metadata +
-    '\nhours,minimum_bulk_water_c,minimum_inner_wall_interface_c\n' +
-    r.history.map(p => p.hours + ',' + p.temperature_c + ',' + p.interface_temperature_c).join('\n')
+  const metadata = Object.entries(r.raw.parameters).map(([key, value]) => '# ' + key + ',' + value).join('\n')
+  const csv = '# Frost pipe simulation\n# engine,' + r.engine + '\n' + metadata +
+    '\ntime_hours,t_min_water_c,t_avg_water_c,t_max_water_c,ice_fraction\n' +
+    r.raw.series.map(p => [p.time_hours, p.t_min_water_c, p.t_avg_water_c, p.t_max_water_c, p.ice_fraction].join(',')).join('\n')
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }))
   const link = document.createElement('a')
   link.href = url
@@ -129,7 +123,6 @@ function exportResult() {
   link.click()
   URL.revokeObjectURL(url)
 }
-onMounted(() => run())
 onUnmounted(() => {
   disposed = true
   if (pollTimer) clearTimeout(pollTimer)
@@ -166,37 +159,34 @@ onUnmounted(() => {
               </div>
               <section class="input-section">
                 <h3><span class="section-icon">↔</span> Pipe</h3>
-                <div class="input-grid">
-                  <label>Pipe length<div class="number-input"><input v-model.number="params.length_m" type="number" min="0.1" max="1000" step="0.1" required /><span>m</span></div></label>
-                  <label>Pipe material<select v-model="params.material"><option value="copper">Copper</option><option value="steel">Steel</option><option value="pvc">PVC</option><option value="pex">PEX</option></select></label>
-                </div>
-                <SliderInput v-model="params.wall_mm" label="Pipe wall thickness" :min="0.5" :max="30" :step="0.5" unit="mm" />
-                <SliderInput v-model="params.diameter_mm" label="Inner diameter" :min="5" :max="500" :step="0.5" unit="mm" />
+                <label>Pipe material<select v-model="params.material"><option value="copper">Copper</option><option value="steel">Steel</option><option value="pvc">PVC</option><option value="pex">PEX</option></select></label>
+                <SliderInput v-model="params.wall_mm" label="Pipe wall thickness" :min="0.5" :max="10" :step="0.5" unit="mm" />
+                <SliderInput v-model="params.diameter_mm" label="Inner diameter" :min="6" :max="100" :step="0.5" unit="mm" />
               </section>
               <section class="input-section">
                 <h3><span class="section-icon">◎</span> Insulation</h3>
                 <label>Pipe insulation material<select v-model="params.insulation_material"><option value="fiberglass">Fiber glass</option><option value="foam_wrap">Foam wrap</option><option value="mineral_wool">Mineral wool</option><option value="none">No insulation</option></select></label>
-                <SliderInput v-if="params.insulation_material !== 'none'" v-model="params.insulation_mm" label="Insulation thickness" :min="1" :max="200" :step="1" unit="mm" />
+                <SliderInput v-if="params.insulation_material !== 'none'" v-model="params.insulation_mm" label="Insulation thickness" :min="5" :max="50" :step="1" unit="mm" />
                 <p class="input-hint">{{ params.insulation_material === 'none' ? 'Bare pipe. Insulation thickness is 0 mm.' : 'Dry, intact material. Representative conductivity is assigned automatically; actual product and moisture can change performance.' }}</p>
               </section>
               <section class="input-section">
                 <h3><span class="section-icon">❄</span> External conditions</h3>
                 <p class="exposure-note">Continuously exposed to outside air · <b>3 m/s wind</b></p>
                 <div class="input-grid">
-                  <label>Outside temperature<div class="number-input"><input v-model.number="params.ambient_c" type="number" min="-60" max="30" step="1" required /><span>°C</span></div></label>
-                  <label>Cold snap duration<div class="number-input"><input v-model.number="params.duration_h" type="number" min="0.1" max="168" step="0.1" required /><span>hr</span></div></label>
+                  <label>Outside temperature<div class="number-input"><input v-model.number="params.ambient_c" type="number" min="-40" max="-1" step="1" required /><span>°C</span></div></label>
+                  <label>Cold snap duration<div class="number-input"><input v-model.number="params.duration_h" type="number" min="1" max="48" step="0.5" required /><span>hr</span></div></label>
                 </div>
                 <p class="input-hint">Outside temperature and wind stay constant. Convection and radiation are estimated automatically.</p>
               </section>
               <section class="input-section">
                 <h3><span class="section-icon">≈</span> Water</h3>
-                <SliderInput v-model="params.water_c" label="Initial water temperature" :min="0.1" :max="60" :step="0.1" unit="°C" />
-                <SliderInput v-model="params.flow_l_min" label="Drip flow" :min="0" :max="2" :step="0.001" unit="L/min" />
-                <p class="input-hint">0 L/min means stagnant water. A constant drip supplies water at the initial temperature. 0.01 L/min = 0.6 L/hr.</p>
+                <SliderInput v-model="params.water_c" label="Initial water temperature" :min="1" :max="25" :step="0.1" unit="°C" />
+                <SliderInput v-model="params.flow_l_min" label="Drip flow" :min="0" :max="1" :step="0.001" unit="L/min" />
+                <p class="input-hint">0 L/min means stagnant water. A constant drip supplies water at the initial temperature through a 3 m pipe run. 0.01 L/min = 0.6 L/hr.</p>
               </section>
               <section class="engine-section">
                 <label>Calculation engine<select v-model="engine"><option value="estimate">Quick estimate</option><option value="allsolve">Quanscient Allsolve · cloud FEM</option></select></label>
-                <p class="input-hint">{{ engine === 'estimate' ? 'Coupled water / wall thermal model. No cloud credentials needed.' : 'Runs the coupled pipe model in Allsolve. Uses your configured account and cloud compute.' }}</p>
+                <p class="input-hint">{{ engine === 'estimate' ? 'Local lumped estimate. No cloud credentials needed.' : 'Runs the coupled pipe model in Allsolve. Uses your configured account and cloud compute.' }}</p>
               </section>
             </fieldset>
             <button class="run-button" type="submit" :disabled="busy"><span>{{ busy ? 'Simulation running…' : 'Run simulation' }}</span><span aria-hidden="true">{{ busy ? '◌' : '→' }}</span></button>
@@ -220,42 +210,42 @@ onUnmounted(() => {
           <template v-if="result">
             <section class="risk-card" :class="'risk-' + result.risk">
               <div class="risk-icon" aria-hidden="true">{{ result.risk === 'freezing' ? '❄' : result.risk === 'near' ? '!' : '✓' }}</div>
-              <div class="risk-copy"><p class="eyebrow">SIMULATION ASSESSMENT</p><h2>{{ title }}</h2><p>{{ summary }}</p></div>
+              <div class="risk-copy"><p class="eyebrow">SIMULATION ASSESSMENT</p><h2>{{ title }}</h2><p>{{ result.raw.verdict.headline }}</p></div>
               <span class="engine-badge">{{ result.engine === 'allsolve' ? 'ALLSOLVE FEM' : 'QUICK ESTIMATE' }}</span>
             </section>
             <div class="metrics-grid">
-              <div class="metric"><p>Time to freezing onset</p><strong>{{ formatTime(result.freeze_hours) }}</strong><span>Within {{ result.parameters.duration_h }} hr of exposure</span></div>
-              <div class="metric"><p>Coldest bulk water</p><strong>{{ result.minimum_c.toFixed(1) }}<small> °C</small></strong><span>At {{ formatTime(result.end_hours) }}</span></div>
-              <div class="metric"><p>Steady flow threshold · estimate</p><strong>{{ result.critical_flow_l_min.toFixed(3) }}<small> L/min</small></strong><span>{{ result.flow_threshold_note }}</span></div>
+              <div class="metric"><p>Critical outside temperature</p><strong>{{ formatTemperature(result.raw.critical_ambient_c) }}</strong><span>{{ result.raw.critical_note ?? 'Blocks within the ' + result.raw.parameters.cold_snap_hours + ' h cold snap below this' }}</span></div>
+              <div class="metric"><p>First ice</p><strong>{{ formatHours(result.raw.t_onset_hours) }}</strong><span>At {{ result.raw.parameters.outside_temp_c }} °C outside</span></div>
+              <div class="metric"><p>Blocked</p><strong>{{ formatHours(result.raw.t_blockage_hours) }}</strong><span>90% of the water is ice</span></div>
             </div>
 
             <section class="assumptions-card">
-              <div class="card-heading"><div><p class="eyebrow">CONDITIONS USED IN THIS RUN</p><h2>Derived heat transfer & approximations</h2></div></div>
-              <div class="derived-values"><span>Pipe conductivity <b>{{ result.environment.pipe_k_w_mk }} W/m·K</b></span><span>Insulation conductivity <b>{{ result.environment.insulation_k_w_mk === null ? 'None' : result.environment.insulation_k_w_mk + ' W/m·K' }}</b></span><span>External convection + radiation <b>{{ result.environment.external_h_w_m2k.toFixed(1) }} W/m²·K</b></span><span>Water-side heat transfer <b>{{ result.environment.internal_h_w_m2k.toFixed(1) }} W/m²·K</b></span></div>
-              <p v-if="result.freeze_hours !== null && result.minimum_c > 0" class="wall-note">At first freezing onset the bulk water is still {{ result.minimum_c.toFixed(1) }} °C. The reported event is water at the inner pipe wall reaching 0 °C.</p>
-              <details><summary>Model assumptions and limits</summary><ul><li v-for="assumption in result.assumptions" :key="assumption">{{ assumption }}</li></ul></details>
+              <div class="card-heading"><div><p class="eyebrow">CONDITIONS USED IN THIS RUN</p><h2>Verdict details &amp; advice</h2></div></div>
+              <div class="derived-values"><span>External heat transfer <b>{{ result.raw.h_out.toFixed(1) }} W/m²·K</b></span><span>Surroundings <b>{{ formatTemperature(result.raw.surroundings_c) }}</b></span></div>
+              <ul class="verdict-list"><li v-for="line in result.raw.verdict.details" :key="line">{{ line }}</li></ul>
+              <div v-if="result.raw.verdict.actions.length" class="verdict-actions"><h3>What to do</h3><ul><li v-for="action in result.raw.verdict.actions" :key="action">{{ action }}</li></ul></div>
+              <details><summary>Model assumptions and limits</summary><ul><li v-for="assumption in [...result.raw.assumptions, ...result.raw.verdict.caveats]" :key="assumption">{{ assumption }}</li></ul></details>
             </section>
 
             <section class="chart-card">
               <div class="card-heading"><div><p class="eyebrow">THERMAL RESPONSE</p><h2>How fast does the water cool?</h2></div><button class="text-button" type="button" @click="exportResult">Export CSV ↗</button></div>
-              <PipeChart :result="result" />
-              <p v-if="result.freeze_hours !== null" class="chart-note">The curves end when the water / inner-wall interface reaches 0 °C. Ice growth is outside this model.</p>
-              <div class="result-actions"><button type="button" class="outline-button" :disabled="stale || comparison.length >= 4 || busy" @click="saveScenario">+ Save scenario for comparison</button><a v-if="result.project_url" :href="result.project_url" target="_blank" rel="noopener noreferrer">Open Allsolve project ↗</a></div>
+              <ResultsChart :results="result.raw" />
+              <div class="result-actions"><button type="button" class="outline-button" :disabled="stale || comparison.length >= 4 || busy" @click="saveScenario">+ Save scenario for comparison</button></div>
             </section>
 
             <section v-if="comparison.length" class="comparison-card">
               <div class="card-heading"><div><p class="eyebrow">EXPLORE THE TRADEOFFS</p><h2>Scenario comparison</h2></div><button type="button" class="text-button" @click="comparison = []">Clear</button></div>
-              <div class="table-scroll"><table><thead><tr><th>Scenario</th><th>Ambient</th><th>Insulation</th><th>Flow</th><th>Exposure</th><th>Freezing onset</th><th>Minimum</th><th></th></tr></thead><tbody><tr v-for="(scenario, index) in comparison" :key="index"><td>{{ index + 1 }} · {{ scenario.engine === 'estimate' ? 'Estimate' : 'Allsolve' }}</td><td>{{ scenario.parameters.ambient_c }} °C</td><td>{{ scenario.parameters.insulation_mm }} mm</td><td>{{ scenario.parameters.flow_l_min }} L/min</td><td>{{ scenario.parameters.duration_h }} hr</td><td>{{ formatTime(scenario.freeze_hours) }}</td><td>{{ scenario.minimum_c.toFixed(1) }} °C</td><td><button type="button" class="text-button" :aria-label="'Remove scenario ' + (index + 1)" @click="comparison.splice(index, 1)">×</button></td></tr></tbody></table></div>
+              <div class="table-scroll"><table><thead><tr><th>Scenario</th><th>Ambient</th><th>Insulation</th><th>Flow</th><th>Exposure</th><th>First ice</th><th>Blocked</th><th></th></tr></thead><tbody><tr v-for="(scenario, index) in comparison" :key="index"><td>{{ index + 1 }} · {{ scenario.engine === 'estimate' ? 'Estimate' : 'Allsolve' }}</td><td>{{ scenario.parameters.ambient_c }} °C</td><td>{{ scenario.parameters.insulation_mm }} mm</td><td>{{ scenario.parameters.flow_l_min }} L/min</td><td>{{ scenario.parameters.duration_h }} hr</td><td>{{ formatHours(scenario.raw.t_onset_hours) }}</td><td>{{ formatHours(scenario.raw.t_blockage_hours) }}</td><td><button type="button" class="text-button" :aria-label="'Remove scenario ' + (index + 1)" @click="comparison.splice(index, 1)">×</button></td></tr></tbody></table></div>
             </section>
           </template>
-          <section v-else class="empty-card"><div class="empty-symbol">◎</div><h2>Understand your cold-weather exposure</h2><p>Choose a scenario or enter your pipe parameters, then run the model to see freezing onset and water temperatures.</p></section>
+          <section v-else class="empty-card"><div class="empty-symbol">◎</div><h2>Understand your cold-weather exposure</h2><p>Choose a scenario or enter your pipe parameters, then run the model to see when ice forms and when the pipe blocks.</p></section>
         </div>
       </div>
       <section class="physics-note">
         <div><p class="eyebrow">ABOUT THIS MODEL</p><h2>Heat escapes. Flow replenishes it.</h2></div>
-        <div><h3>What is calculated</h3><p>An exposed pipe in constant outside air at 3 m/s. Water and pipe wall exchange heat through radial resistance and cool through insulation, convection and radiation. A drip supplies fresh water at the initial temperature.</p></div>
-        <div><h3>What freezing onset means</h3><p>Water at the inner pipe wall reaches 0 °C at atmospheric pressure. Bulk water can still be warmer. Separate water and wall thermal nodes estimate this first onset; ice growth, blockage and bursting need a fuller model.</p></div>
-        <div><h3>Use the results to compare</h3><p>Compare pipe materials, insulation and drip flow. The local and Allsolve models share their thermal coefficients. The steady inner-wall freezing threshold accounts for flow-dependent internal heat transfer.</p></div>
+        <div><h3>What is calculated</h3><p>An exposed pipe in constant outside air at 3 m/s. The water cools through the pipe wall, insulation, convection and radiation, then freezes from the wall inward. A drip supplies fresh water at the initial temperature.</p></div>
+        <div><h3>First ice and blockage</h3><p>First ice is when the coldest water reaches 0 °C. The pipe counts as blocked once 90% of the water is ice. Bursting is not modelled.</p></div>
+        <div><h3>Critical outside temperature</h3><p>The outside temperature at which the pipe just blocks by the end of the cold snap, found by repeating the run across a range of outside temperatures.</p></div>
       </section>
       <footer class="page-footer"><span>FROST · Water infrastructure resilience</span><span>Vue 3 + Quanscient Allsolve</span></footer>
     </main>
@@ -509,10 +499,9 @@ button:focus-visible, select:focus-visible, a:focus-visible { outline:2px solid 
 .subtle-tag { font-size:9.5px; background:rgba(14,28,40,0.04); border:1px solid rgba(14,28,40,0.07); border-radius:7px; padding:5px 9px; white-space:nowrap; color:var(--muted); }
 
 /* Chart */
-.chart-wrap { height:285px; padding:16px 20px 0; }
 .text-button { background:none; border:0; font-size:10px; color:var(--teal); padding:5px 0; cursor:pointer; white-space:nowrap; font-family:inherit; font-weight:500; }
 .text-button:hover { text-decoration:underline; }
-.chart-note { padding:0 22px; margin:5px 0 14px; font-size:10px; color:var(--subtle); }
+.result-actions { margin-top:14px; }
 .result-actions { display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--line); padding:14px 22px; gap:12px; }
 .outline-button {
   border: 1px solid rgba(10,150,136,0.35); border-radius: var(--r-xs);
@@ -533,7 +522,10 @@ button:focus-visible, select:focus-visible, a:focus-visible { outline:2px solid 
 .assumptions-card summary { cursor:pointer; color:var(--teal); font-weight:500; }
 .assumptions-card ul { list-style:disc; padding-left:17px; margin-top:10px; line-height:1.8; }
 .assumptions-card li { margin-bottom:5px; }
-.wall-note { margin:0 22px 14px; padding:9px 12px; font-size:11px; line-height:1.65; color:#8a5e18; background:rgba(238,190,55,0.08); border:1px solid rgba(200,150,28,0.15); border-radius:var(--r-xs); }
+.verdict-list, .verdict-actions ul { list-style:disc; padding-left:17px; margin:0; font-size:11px; line-height:1.8; color:var(--ink-2); }
+.verdict-list { margin:0 22px 14px; }
+.verdict-actions { margin:0 22px 14px; padding:11px 13px; border-radius:var(--r-xs); background:rgba(10,150,136,0.06); border:1px solid rgba(10,150,136,0.12); }
+.verdict-actions h3 { font-size:11px; font-weight:600; margin:0 0 6px; color:var(--teal-dk); }
 
 /* Comparison */
 .comparison-card { padding-bottom:10px; }
@@ -625,6 +617,5 @@ button:focus-visible, select:focus-visible, a:focus-visible { outline:2px solid 
   .physics-note h2 { max-width:none; }
   .result-actions { flex-wrap:wrap; }
   .subtle-tag { display:none; }
-  .chart-wrap { padding-left:10px; padding-right:12px; }
 }
 </style>

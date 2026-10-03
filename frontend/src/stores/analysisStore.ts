@@ -52,5 +52,11 @@ export const useAnalysisStore = defineStore('analysis', () => {
     hasResults.value = true
   }
 
-  return { params, series, hasResults, setParams, updateFromResult }
+  /** Drop the last run's series so the 3D viewer shows no ice it hasn't computed. */
+  function clearResults() {
+    series.value = []
+    hasResults.value = false
+  }
+
+  return { params, series, hasResults, setParams, updateFromResult, clearResults }
 })
