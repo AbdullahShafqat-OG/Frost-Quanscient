@@ -111,6 +111,19 @@ function exportResult() {
               <div class="table-scroll"><table><thead><tr><th>Scenario</th><th>Ambient</th><th>Insulation</th><th>Flow</th><th>Exposure</th><th>First ice</th><th>Blocked</th><th></th></tr></thead><tbody><tr v-for="(scenario, index) in comparison" :key="index"><td>{{ index + 1 }} · {{ scenario.mode === 'demo' ? 'Demo' : 'Allsolve' }}</td><td>{{ scenario.parameters.outside_temp_c }} °C</td><td>{{ insulationLabel(scenario) }}</td><td>{{ scenario.parameters.drip_flow_lpm }} L/min</td><td>{{ scenario.parameters.cold_snap_hours }} h</td><td>{{ formatHours(scenario.t_onset_hours) }}</td><td>{{ formatHours(scenario.t_blockage_hours) }}</td><td><button type="button" class="text-button" :aria-label="'Remove scenario ' + (index + 1)" @click="comparison.splice(index, 1)">×</button></td></tr></tbody></table></div>
             </section>
           </template>
+          <section v-else-if="store.isRunning" class="loading-card" role="status">
+            <div class="loading-inner">
+              <div class="loading-spinner" aria-hidden="true"></div>
+              <div class="loading-copy">
+                <p class="loading-pct">{{ Math.round(store.progress) }}%</p>
+                <p class="loading-msg">{{ store.message || 'Running…' }}</p>
+              </div>
+            </div>
+            <div class="loading-bar-wrap">
+              <progress :value="store.progress" max="100"></progress>
+            </div>
+            <button type="button" class="abort-link" @click="store.abortAnalysis()">Abort</button>
+          </section>
           <section v-else class="empty-card"><div class="empty-symbol">◎</div><h2>Understand your cold-weather exposure</h2><p>Set up your pipe and the cold snap, then run the model to see when ice forms and when the pipe blocks.</p></section>
         </div>
         </div><!-- /content-area -->
@@ -379,6 +392,39 @@ button:focus-visible, select:focus-visible, a:focus-visible { outline:2px solid 
 .comparison-card table { width:100%; border-collapse:collapse; font-size:14px; white-space:nowrap; text-align:left; }
 .comparison-card th { font-weight:500; color:var(--muted); border-bottom:1px solid var(--line); padding:9px 9px 9px 0; }
 .comparison-card td { padding:11px 9px 11px 0; border-bottom:1px solid var(--line); color:#3d5668; }
+
+/* Loading state */
+.loading-card {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 20px; padding: 80px 35px;
+  background: var(--glass);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid var(--glass-bd);
+  border-radius: var(--r);
+  box-shadow: var(--shadow-md);
+  text-align: center;
+}
+.loading-inner { display: flex; align-items: center; gap: 18px; }
+.loading-spinner {
+  width: 36px; height: 36px; flex-shrink: 0;
+  border-radius: 50%;
+  border: 3px solid rgba(10,150,136,0.2);
+  border-top-color: var(--teal);
+  animation: spin .8s linear infinite;
+}
+.loading-copy { text-align: left; }
+.loading-pct { font-size: 28px; font-weight: 700; letter-spacing: -.8px; color: var(--ink); margin: 0 0 2px; }
+.loading-msg { font-size: 14px; color: var(--muted); margin: 0; }
+.loading-bar-wrap { width: 100%; max-width: 320px; }
+.loading-bar-wrap progress { display: block; width: 100%; height: 4px; accent-color: var(--teal); border: none; border-radius: 99px; background: rgba(14,28,40,0.07); }
+.abort-link {
+  background: none; border: none; font-family: inherit;
+  font-size: 13px; color: var(--subtle); cursor: pointer;
+  text-decoration: underline; padding: 0;
+  transition: color .15s;
+}
+.abort-link:hover { color: #c0502a; }
 
 /* Empty state */
 .empty-card { padding:100px 35px; text-align:center; color:var(--muted); }

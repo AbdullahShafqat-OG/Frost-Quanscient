@@ -187,26 +187,18 @@ function toggleMode() {
 
     <!-- Action Buttons -->
     <div class="actions">
-      <button v-if="!store.isRunning" type="button" class="run-button" @click="store.startAnalysis()">
-        <span>Run simulation</span><span aria-hidden="true">→</span>
+      <button type="button" class="run-button" :disabled="store.isRunning" @click="store.startAnalysis()">
+        <span>{{ store.isRunning ? 'Running…' : 'Run simulation' }}</span>
+        <span v-if="store.isRunning" class="spinner" aria-hidden="true"></span>
+        <span v-else aria-hidden="true">→</span>
       </button>
-
-      <button v-if="store.isRunning" type="button" class="run-button abort-button" @click="store.abortAnalysis()">
-        <span class="abort-copy">
-          <span class="abort-title">{{ Math.round(store.progress) }}% — Click to Abort</span>
-          <span class="abort-message">{{ store.message }}</span>
-        </span>
-        <span class="spinner" aria-hidden="true"></span>
-      </button>
-      <div v-if="store.isRunning" class="progress-area" role="status">
-        <progress :value="store.progress" max="100"></progress>
-      </div>
 
       <div class="secondary-actions">
         <button
           v-if="store.results !== null || store.status === 'failed'"
           type="button"
           class="outline-button"
+          :disabled="store.isRunning"
           @click="store.reset()"
         >
           Clear results
@@ -217,11 +209,11 @@ function toggleMode() {
       </div>
     </div>
 
-    <!-- Status Message -->
+    <!-- Status Message (errors only) -->
     <p
-      v-if="store.message && !store.isRunning"
-      :class="store.status === 'failed' ? 'error-message' : 'status-message'"
-      :role="store.status === 'failed' ? 'alert' : 'status'"
+      v-if="store.message && !store.isRunning && store.status === 'failed'"
+      class="error-message"
+      role="alert"
     >
       {{ store.message }}
     </p>
@@ -283,14 +275,8 @@ function toggleMode() {
 
 /* Actions */
 .actions { display: flex; flex-direction: column; gap: 10px; }
-.abort-button { background: linear-gradient(135deg, #c0502a 0%, #a8411f 100%); box-shadow: 0 2px 14px rgba(192,80,42,0.3), inset 0 1px 0 rgba(255,255,255,0.14); }
-.abort-button:hover { background: linear-gradient(135deg, #cf5a32 0%, #b24822 100%); box-shadow: 0 5px 20px rgba(192,80,42,0.36), inset 0 1px 0 rgba(255,255,255,0.14); }
-.abort-copy { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; text-align: left; }
-.abort-title { font-weight: 600; }
-.abort-message { font-size: 12px; font-weight: 400; opacity: .85; }
 .spinner { width: 16px; height: 16px; flex-shrink: 0; border-radius: 50%; border: 2px solid rgba(255,255,255,0.35); border-top-color: #fff; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.progress-area { margin-top: 0; }
 .secondary-actions { display: flex; gap: 8px; }
 .secondary-actions .outline-button { flex: 1; }
 .status-message { margin: 12px 0 0; font-size: 13px; color: var(--muted); text-align: center; }
