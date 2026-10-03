@@ -4,10 +4,8 @@ import {
   PIPE_MATERIALS,
   INSULATION_TYPES,
   LOCATIONS,
-  FIXED_LOCATION,
   type PipeMaterial,
   type InsulationType,
-  type Location,
   type PipeParams,
 } from '@/types'
 
@@ -52,7 +50,6 @@ const waterSliders: SliderSpec[] = [
 
 const materialOptions = Object.entries(PIPE_MATERIALS) as [PipeMaterial, (typeof PIPE_MATERIALS)[PipeMaterial]][]
 const insulationOptions = Object.entries(INSULATION_TYPES) as [InsulationType, (typeof INSULATION_TYPES)[InsulationType]][]
-const locationOptions = Object.entries(LOCATIONS) as [Location, (typeof LOCATIONS)[Location]][]
 
 function onSlider(key: NumericKey, event: Event) {
   store.setParam(key, Number((event.target as HTMLInputElement).value))

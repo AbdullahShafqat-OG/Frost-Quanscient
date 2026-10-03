@@ -234,10 +234,14 @@ function exportResult() {
 }
 .model-col-head { margin-bottom: 2px; }
 .model-col-head h3 { font-size: 15px; font-weight: 600; margin: 4px 0 0; letter-spacing: -.2px; }
+/* Min height, not fixed: the viewer's canvas has its own minimum, so a fixed
+   box would clip the controls hint below it */
 .pipe-3d-wrap {
-  height: 420px; border-radius: 12px; overflow: hidden;
+  display: flex; flex-direction: column;
+  min-height: 420px; border-radius: 12px;
   background: rgba(14,28,40,0.02);
 }
+.pipe-3d-wrap > * { flex: 1; }
 .pipe-side-stack { display: flex; flex-direction: column; gap: 10px; }
 .pipe-front-wrap { height: 380px; }
 
@@ -429,7 +433,7 @@ button:focus-visible, select:focus-visible, a:focus-visible { outline:2px solid 
   .workspace { padding:18px 14px 44px; }
   .topbar { padding:0 16px; min-height:60px; }
   .tri-layout { grid-template-columns: 1fr; gap:13px; }
-  .pipe-3d-wrap { height:280px; }
+  .pipe-3d-wrap { min-height:280px; }
 
   .risk-card { padding:16px 16px; }
   .metrics-grid { gap:9px; }
