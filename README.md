@@ -98,7 +98,9 @@ beer_cooling_app/
 │   ├── src/
 │   │   ├── api/          # API client
 │   │   ├── components/   # Vue components
+│   │   ├── composables/  # Shared Vue logic (pipe geometry)
 │   │   ├── stores/       # Pinia state management
+│   │   ├── visuals/      # Material styles, textures, three.js scene
 │   │   └── types/        # TypeScript type definitions
 │   └── package.json
 └── README.md
@@ -152,7 +154,8 @@ npm run dev
 2. **External conditions**: where the pipe is, outside temperature, cold snap duration
 3. **Water**: initial temperature, drip flow
 4. **Pick a mode**: Full simulation (Allsolve) or Demo (local estimate)
-5. **Read the verdict**: critical temperature, first ice / blockage times, advice, assumed conditions and the per-temperature table
+5. **Inspect the pipe**: front and side sections, and a 3D model you can rotate (cutaway on/off)
+6. **Read the verdict**: critical temperature, first ice / blockage times, advice, assumed conditions and the per-temperature table
 
 ## API Endpoints
 
@@ -171,5 +174,6 @@ Built with:
 - [Quanscient Allsolve](https://quanscient.com) - FEM simulation platform
 - [Vue 3](https://vuejs.org) - Frontend framework
 - [Chart.js](https://www.chartjs.org) - Charts
+- [three.js](https://threejs.org) - 3D pipe model
 - [FastAPI](https://fastapi.tiangolo.com) - Backend framework
 - [Tailwind CSS](https://tailwindcss.com) - Styling

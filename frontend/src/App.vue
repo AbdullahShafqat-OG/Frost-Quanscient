@@ -1,10 +1,15 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, defineAsyncComponent } from 'vue'
 import { useAnalysisStore } from '@/stores/analysisStore'
 import ParameterPanel from '@/components/ParameterPanel.vue'
 import GeometryViewer from '@/components/GeometryViewer.vue'
 import ResultsChart from '@/components/ResultsChart.vue'
 import VerdictCard from '@/components/VerdictCard.vue'
+import PipeSideSection from '@/components/PipeSideSection.vue'
+import MaterialLegend from '@/components/MaterialLegend.vue'
+
+// three.js is loaded in its own chunk, off the critical path
+const PipeViewer3D = defineAsyncComponent(() => import('@/components/PipeViewer3D.vue'))
 
 const store = useAnalysisStore()
 
@@ -78,6 +83,25 @@ const showResults = computed(() => store.hasResults)
         </div>
       </div>
 
+      <!-- Pipe model: 3D view and lengthwise section -->
+      <section class="mt-6 card p-6" aria-labelledby="pipe-model-heading">
+        <h2 id="pipe-model-heading" class="text-base font-semibold text-grey-900 mb-4">Pipe model</h2>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div class="lg:col-span-2 h-[460px]">
+            <PipeViewer3D />
+          </div>
+          <div class="space-y-4">
+            <PipeSideSection />
+            <MaterialLegend />
+            <p class="text-xs text-grey-600">
+              Section faces are hatched by material — 45° lines for metals (dashed alternate for copper),
+              cross-hatching for plastics, wavy, zigzag or cell symbols for insulation, dashes for water and
+              crystals for ice — so layers read without relying on colour.
+            </p>
+          </div>
+        </div>
+      </section>
+
       <!-- Info Section -->
       <section class="mt-8 card p-8">
         <h2 class="text-lg font-semibold text-grey-900 mb-6">The Physics</h2>
@@ -123,7 +147,7 @@ const showResults = computed(() => store.hasResults)
     <!-- Footer -->
     <footer class="border-t border-grey-200 mt-8 py-5 bg-white">
       <div class="max-w-7xl mx-auto px-6 text-center text-xs text-grey-500">
-        <p>Built with Vue 3, Chart.js and the Quanscient Allsolve SDK</p>
+        <p>Built with Vue 3, three.js, Chart.js and the Quanscient Allsolve SDK</p>
       </div>
     </footer>
   </div>

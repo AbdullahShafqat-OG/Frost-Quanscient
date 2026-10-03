@@ -79,25 +79,25 @@ export interface AnalysisResults {
   verdict: Verdict
 }
 
-// Material tables for the UI (the backend holds the full property set)
+// Material tables for the UI (the backend holds the full property set;
+// colours and hatching live in visuals/materialStyles.ts)
 export interface MaterialSpec {
   label: string
   k: number
-  color: string
 }
 
 export const PIPE_MATERIALS: Record<PipeMaterial, MaterialSpec> = {
-  copper: { label: 'Copper', k: 400, color: '#B87333' },
-  steel: { label: 'Steel', k: 50, color: '#71797E' },
-  pvc: { label: 'PVC', k: 0.19, color: '#F5F5F5' },
-  pex: { label: 'PEX', k: 0.4, color: '#E0E0E0' },
+  copper: { label: 'Copper', k: 400 },
+  steel: { label: 'Steel', k: 50 },
+  pvc: { label: 'PVC', k: 0.19 },
+  pex: { label: 'PEX', k: 0.4 },
 }
 
 export const INSULATION_TYPES: Record<InsulationType, MaterialSpec> = {
-  fiberglass: { label: 'Fiberglass', k: 0.035, color: '#FCD34D' },
-  foam_wrap: { label: 'Foam wrap', k: 0.038, color: '#4B5563' },
-  mineral_wool: { label: 'Mineral wool', k: 0.037, color: '#A8A29E' },
-  none: { label: 'No insulation', k: 0, color: 'transparent' },
+  fiberglass: { label: 'Fiberglass', k: 0.035 },
+  foam_wrap: { label: 'Foam wrap', k: 0.038 },
+  mineral_wool: { label: 'Mineral wool', k: 0.037 },
+  none: { label: 'No insulation', k: 0 },
 }
 
 /** Location is fixed in this version (backend: FIXED_LOCATION) */
