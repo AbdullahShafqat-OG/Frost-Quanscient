@@ -61,12 +61,10 @@ export class PipeScene {
   private frame = 0
 
   constructor(canvas: HTMLCanvasElement, options: { reducedMotion: boolean }) {
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true })
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     // Neutral tone mapping keeps the material colours close to the 2D palette
     this.renderer.toneMapping = THREE.NeutralToneMapping
-
-    this.scene.background = new THREE.Color(BACKGROUND)
     const pmrem = new THREE.PMREMGenerator(this.renderer)
     const room = new RoomEnvironment()
     this.scene.environment = pmrem.fromScene(room, 0.04).texture

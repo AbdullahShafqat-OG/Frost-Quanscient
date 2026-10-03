@@ -53,8 +53,7 @@ const description = computed(() => {
         <SectionPatterns :prefix="prefix" :layers="layers" />
       </defs>
 
-      <!-- Surroundings -->
-      <rect x="0" y="0" width="300" height="290" rx="8" :fill="backdrop.fill" />
+      <!-- Surroundings backdrop — just wind arrows, no filled rect -->
       <g v-if="store.params.location === 'outdoors'" stroke="#64748B" stroke-width="1.5" fill="#64748B">
         <g v-for="i in 3" :key="i" :transform="`translate(8, ${CY - 40 + (i - 1) * 40})`">
           <line x1="0" y1="0" x2="22" y2="0" />

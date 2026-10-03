@@ -70,16 +70,13 @@ function exportResult() {
           <ParameterPanel />
         </aside>
 
-        <!-- Column 2: 3D models stacked -->
-        <div class="model-column">
-          <div class="model-col-head"><p class="eyebrow">PIPE MODEL</p><h3>Cross-section &amp; geometry</h3></div>
-          <div class="pipe-3d-wrap"><Suspense><PipeViewer3D /></Suspense></div>
-          <div class="pipe-side-stack">
-            <!-- Front cross-section includes the material legend -->
+        <div class="content-area">
+          <!-- Horizontal model row: all 3 models equal width -->
+          <div class="model-row">
+            <div class="pipe-3d-wrap"><Suspense><PipeViewer3D /></Suspense></div>
             <div class="pipe-front-wrap"><GeometryViewer /></div>
-            <PipeSideSection />
+            <div class="pipe-side-wrap"><PipeSideSection /></div>
           </div>
-        </div>
 
         <div class="results-panel">
           <div v-if="store.resultsStale" class="stale-notice" role="status">Parameters changed. Run again to update the results below.</div>
@@ -116,6 +113,7 @@ function exportResult() {
           </template>
           <section v-else class="empty-card"><div class="empty-symbol">◎</div><h2>Understand your cold-weather exposure</h2><p>Set up your pipe and the cold snap, then run the model to see when ice forms and when the pipe blocks.</p></section>
         </div>
+        </div><!-- /content-area -->
       </div>
       <section class="physics-note">
         <div><p class="eyebrow">ABOUT THIS MODEL</p><h2>Heat escapes. Flow replenishes it.</h2></div>
@@ -226,24 +224,28 @@ function exportResult() {
 }
 .sidebar-close:hover { color: var(--ink); }
 
-.tri-layout { display: grid; grid-template-columns: 280px 420px minmax(0,1fr); gap: 18px; align-items: start; }
+.tri-layout { display: grid; grid-template-columns: 280px minmax(0,1fr); gap: 18px; align-items: start; }
 
-/* Column 2 – 3D model and 2D sections (taller than the viewport, so not sticky) */
-.model-column {
-  display: flex; flex-direction: column; gap: 12px;
+/* Right content area */
+.content-area { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+
+/* Horizontal model row — all 3 equal */
+.model-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+.pipe-3d-wrap,
+.pipe-front-wrap,
+.pipe-side-wrap {
+  height: 360px;
+  border-radius: var(--r);
+  overflow: hidden;
+  padding: 16px;
+  background: var(--glass);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid var(--glass-bd);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
 }
-.model-col-head { margin-bottom: 2px; }
-.model-col-head h3 { font-size: 15px; font-weight: 600; margin: 4px 0 0; letter-spacing: -.2px; }
-/* Min height, not fixed: the viewer's canvas has its own minimum, so a fixed
-   box would clip the controls hint below it */
-.pipe-3d-wrap {
-  display: flex; flex-direction: column;
-  min-height: 420px; border-radius: 12px;
-  background: rgba(14,28,40,0.02);
-}
-.pipe-3d-wrap > * { flex: 1; }
-.pipe-side-stack { display: flex; flex-direction: column; gap: 10px; }
-.pipe-front-wrap { height: 380px; }
 
 /* ── Glass card base ─────────────────────────────────────────────────────────── */
 .setup-panel,
@@ -403,7 +405,9 @@ button:focus-visible, select:focus-visible, a:focus-visible { outline:2px solid 
 
 /* Tablet (768–1023px): 3D + results columns, config becomes floating drawer */
 @media(max-width:1023px) {
-  .tri-layout { grid-template-columns: 300px minmax(0,1fr); gap:15px; }
+  .tri-layout { grid-template-columns: minmax(0,1fr); gap:15px; }
+  .model-row { grid-template-columns: 1fr 1fr; }
+  .pipe-side-wrap { display: none; }
 
   /* Setup panel floats as a slide-in drawer */
   .setup-panel {
@@ -433,7 +437,10 @@ button:focus-visible, select:focus-visible, a:focus-visible { outline:2px solid 
   .workspace { padding:18px 14px 44px; }
   .topbar { padding:0 16px; min-height:60px; }
   .tri-layout { grid-template-columns: 1fr; gap:13px; }
-  .pipe-3d-wrap { min-height:280px; }
+  .model-row { grid-template-columns: 1fr; }
+  .pipe-3d-wrap { height:300px; }
+  .pipe-front-wrap { height:300px; }
+  .pipe-side-wrap { display: none; }
 
   .risk-card { padding:16px 16px; }
   .metrics-grid { gap:9px; }

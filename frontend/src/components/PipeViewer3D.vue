@@ -91,8 +91,8 @@ function onKeydown(event: KeyboardEvent) {
 
 <template>
   <div class="flex flex-col h-full">
-    <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-      <h3 class="text-sm font-semibold text-grey-900">3D model</h3>
+    <div class="flex items-center justify-between gap-2 mb-2">
+      <h3 class="text-base font-semibold text-grey-900">3D model</h3>
       <div class="flex items-center gap-2">
         <span v-if="!radii.toScale" class="text-xs text-grey-600">not to scale</span>
         <button
@@ -118,7 +118,7 @@ function onKeydown(event: KeyboardEvent) {
 
     <div
       ref="container"
-      class="relative flex-1 min-h-[280px] rounded-lg overflow-hidden border border-grey-200 bg-[#F1F5F9] cursor-grab active:cursor-grabbing focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500"
+      class="relative flex-1 min-h-0 rounded-lg overflow-hidden cursor-grab active:cursor-grabbing focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500"
       :tabindex="unsupported ? -1 : 0"
       role="img"
       :aria-label="description"

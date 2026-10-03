@@ -85,7 +85,7 @@ const description = computed(() => {
 <template>
   <div class="flex flex-col">
     <div class="flex items-center justify-between mb-2">
-      <h3 class="text-sm font-semibold text-grey-900">Lengthwise section <span class="text-grey-500 font-normal">(side)</span></h3>
+      <h3 class="text-base font-semibold text-grey-900">Lengthwise section <span class="text-grey-500 font-normal">(side)</span></h3>
       <span v-if="!radii.toScale" class="text-xs text-grey-600">not to scale</span>
     </div>
 
@@ -100,7 +100,6 @@ const description = computed(() => {
         </marker>
       </defs>
 
-      <rect x="0" y="0" width="300" height="220" rx="8" fill="#F1F5F9" />
       <text x="292" y="212" font-size="10" fill="#334155" text-anchor="end">Section B–B</text>
 
       <!-- Layers -->
