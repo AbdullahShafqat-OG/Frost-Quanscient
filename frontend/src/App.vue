@@ -1,121 +1,42 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onUnmounted, reactive, ref, watch, watchEffect } from 'vue'
+import { computed, defineAsyncComponent, ref } from 'vue'
 import ResultsChart from '@/components/ResultsChart.vue'
-import SliderInput from '@/components/SliderInput.vue'
+import ParameterPanel from '@/components/ParameterPanel.vue'
 import PipeSideSection from '@/components/PipeSideSection.vue'
 import GeometryViewer from '@/components/GeometryViewer.vue'
-import type { PipeParams, PipeResult } from '@/types/pipe'
-import { formatHours, formatTemperature } from '@/types'
-import { runEstimate, startJob, pollJob } from '@/api/analysis'
+import { formatHours, formatTemperature, INSULATION_TYPES, type AnalysisResults } from '@/types'
 import { useAnalysisStore } from '@/stores/analysisStore'
 
 const PipeViewer3D = defineAsyncComponent(() => import('@/components/PipeViewer3D.vue'))
-const analysisStore = useAnalysisStore()
+const store = useAnalysisStore()
 
-const defaults: PipeParams = {
-  ambient_c: -20, water_c: 10, diameter_mm: 25,
-  wall_mm: 2, material: 'copper', insulation_mm: 0, insulation_material: 'none',
-  flow_l_min: 0, duration_h: 12,
-}
-const params = reactive<PipeParams>({ ...defaults })
-const engine = ref<'estimate' | 'allsolve'>('estimate')
-const result = ref<PipeResult | null>(null)
-const busy = ref(false)
-const error = ref('')
-const message = ref('')
-const progress = ref(0)
-const comparison = ref<PipeResult[]>([])
+const result = computed(() => store.results)
+const comparison = ref<AnalysisResults[]>([])
 const sidebarOpen = ref(false)
-const form = ref<HTMLFormElement | null>(null)
-let disposed = false
-let pollTimer: ReturnType<typeof setTimeout> | undefined
-let requestController: AbortController | undefined
-const stale = computed(() => result.value !== null &&
-  Object.keys(defaults).some(key => params[key as keyof PipeParams] !== result.value?.parameters[key as keyof PipeParams]))
-const RISK_TITLE = { freezing: 'Freezes', near: 'At risk', above: 'Safe' } as const
-const title = computed(() => result.value ? RISK_TITLE[result.value.risk] : '')
-watch(() => params.insulation_material, material => {
-  if (material === 'none') params.insulation_mm = 0
-  else if (params.insulation_mm === 0) params.insulation_mm = 20
-})
 
-// Keep the 3D model in sync with form params without needing a run
-watchEffect(() => {
-  analysisStore.setParams({ ...params })
-})
-// Ice in the 3D model belongs to the last run's inputs; drop it once they change
-watch(stale, isStale => {
-  if (isStale) analysisStore.clearResults()
-})
-function applyPreset(preset: 'exposed' | 'insulated' | 'flowing') {
-  Object.assign(params, defaults)
-  if (preset === 'insulated') { params.insulation_material = 'foam_wrap'; params.insulation_mm = 30 }
-  if (preset === 'flowing') params.flow_l_min = 1
-  error.value = ''
-}
-async function poll(id: string, snapshot: PipeParams) {
-  try {
-    const job = await pollJob(id, snapshot, requestController?.signal)
-    if (disposed) return
-    message.value = job.message
-    progress.value = job.progress
-    if (job.status === 'completed') {
-      result.value = job.result!
-      analysisStore.updateFromResult(snapshot, job.result!.raw.series)
-      busy.value = false
-    } else if (job.status === 'failed') {
-      throw new Error(job.message)
-    } else {
-      pollTimer = setTimeout(() => poll(id, snapshot), 1500)
-    }
-  } catch (e) {
-    if (!disposed) {
-      error.value = e instanceof Error ? e.message : 'Unable to retrieve the simulation.'
-      busy.value = false
-    }
-  }
-}
-async function run() {
-  if (busy.value || !form.value?.reportValidity()) return
-  busy.value = true
-  error.value = ''
-  result.value = null
-  analysisStore.clearResults()
-  progress.value = 0
-  message.value = engine.value === 'estimate' ? 'Calculating pipe cooling…' : 'Connecting to Allsolve…'
-  requestController = new AbortController()
-  const snapshot = { ...params }
-  try {
-    if (engine.value === 'estimate') {
-      const response = await runEstimate(snapshot, requestController.signal)
-      if (!disposed) {
-        result.value = response
-        analysisStore.updateFromResult(snapshot, response.raw.series)
-        busy.value = false
-      }
-    } else {
-      const id = await startJob(snapshot, requestController.signal)
-      if (!disposed) await poll(id, snapshot)
-    }
-  } catch (e) {
-    if (!disposed) {
-      error.value = e instanceof Error ? e.message : 'Unable to run simulation.'
-      busy.value = false
-    }
-  }
+const RISK = {
+  freezes: { key: 'freezing', title: 'Freezes', icon: '❄' },
+  at_risk: { key: 'near', title: 'At risk', icon: '!' },
+  safe: { key: 'above', title: 'Safe', icon: '✓' },
+} as const
+const risk = computed(() => (result.value ? RISK[result.value.verdict.level] : null))
+
+function insulationLabel(r: AnalysisResults) {
+  const p = r.parameters
+  return p.insulation === 'none' ? INSULATION_TYPES.none.label : `${p.insulation_thickness_mm} mm ${INSULATION_TYPES[p.insulation].label.toLowerCase()}`
 }
 function saveScenario() {
-  if (result.value && !stale.value && comparison.value.length < 4) {
+  if (result.value && !store.resultsStale && comparison.value.length < 4) {
     comparison.value.push(JSON.parse(JSON.stringify(result.value)))
   }
 }
 function exportResult() {
-  if (!result.value) return
   const r = result.value
-  const metadata = Object.entries(r.raw.parameters).map(([key, value]) => '# ' + key + ',' + value).join('\n')
-  const csv = '# Frost pipe simulation\n# engine,' + r.engine + '\n' + metadata +
+  if (!r) return
+  const metadata = Object.entries(r.parameters).map(([key, value]) => '# ' + key + ',' + value).join('\n')
+  const csv = '# Frost pipe simulation\n# mode,' + r.mode + '\n' + metadata +
     '\ntime_hours,t_min_water_c,t_avg_water_c,t_max_water_c,ice_fraction\n' +
-    r.raw.series.map(p => [p.time_hours, p.t_min_water_c, p.t_avg_water_c, p.t_max_water_c, p.ice_fraction].join(',')).join('\n')
+    r.series.map(p => [p.time_hours, p.t_min_water_c, p.t_avg_water_c, p.t_max_water_c, p.ice_fraction].join(',')).join('\n')
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }))
   const link = document.createElement('a')
   link.href = url
@@ -123,11 +44,6 @@ function exportResult() {
   link.click()
   URL.revokeObjectURL(url)
 }
-onUnmounted(() => {
-  disposed = true
-  if (pollTimer) clearTimeout(pollTimer)
-  requestController?.abort()
-})
 </script>
 
 <template>
@@ -150,50 +66,8 @@ onUnmounted(() => {
       <div class="tri-layout">
         <aside class="setup-panel" :class="{open: sidebarOpen}">
           <button class="sidebar-close" @click="sidebarOpen = false" aria-label="Close panel">&times;</button>
-          <form ref="form" @submit.prevent="run">
-            <div class="panel-heading"><h2>Configure your pipe</h2><span class="step-number">01</span></div>
-            <fieldset :disabled="busy">
-              <div class="presets" aria-label="Example scenarios">
-                <button type="button" @click="applyPreset('exposed')">Exposed</button>
-                <button type="button" @click="applyPreset('insulated')">Insulated</button>
-                <button type="button" @click="applyPreset('flowing')">Flowing</button>
-              </div>
-              <section class="input-section">
-                <h3><span class="section-icon">↔</span> Pipe</h3>
-                <label>Pipe material<select v-model="params.material"><option value="copper">Copper</option><option value="steel">Steel</option><option value="pvc">PVC</option><option value="pex">PEX</option></select></label>
-                <SliderInput v-model="params.wall_mm" label="Pipe wall thickness" :min="0.5" :max="10" :step="0.5" unit="mm" />
-                <SliderInput v-model="params.diameter_mm" label="Inner diameter" :min="6" :max="100" :step="0.5" unit="mm" />
-              </section>
-              <section class="input-section">
-                <h3><span class="section-icon">◎</span> Insulation</h3>
-                <label>Pipe insulation material<select v-model="params.insulation_material"><option value="fiberglass">Fiber glass</option><option value="foam_wrap">Foam wrap</option><option value="mineral_wool">Mineral wool</option><option value="none">No insulation</option></select></label>
-                <SliderInput v-if="params.insulation_material !== 'none'" v-model="params.insulation_mm" label="Insulation thickness" :min="5" :max="50" :step="1" unit="mm" />
-                <p class="input-hint">{{ params.insulation_material === 'none' ? 'Bare pipe. Insulation thickness is 0 mm.' : 'Dry, intact material. Representative conductivity is assigned automatically; actual product and moisture can change performance.' }}</p>
-              </section>
-              <section class="input-section">
-                <h3><span class="section-icon">❄</span> External conditions</h3>
-                <p class="exposure-note">Continuously exposed to outside air · <b>3 m/s wind</b></p>
-                <div class="input-grid">
-                  <label>Outside temperature<div class="number-input"><input v-model.number="params.ambient_c" type="number" min="-40" max="-1" step="1" required /><span>°C</span></div></label>
-                  <label>Cold snap duration<div class="number-input"><input v-model.number="params.duration_h" type="number" min="1" max="48" step="0.5" required /><span>hr</span></div></label>
-                </div>
-                <p class="input-hint">Outside temperature and wind stay constant. Convection and radiation are estimated automatically.</p>
-              </section>
-              <section class="input-section">
-                <h3><span class="section-icon">≈</span> Water</h3>
-                <SliderInput v-model="params.water_c" label="Initial water temperature" :min="1" :max="25" :step="0.1" unit="°C" />
-                <SliderInput v-model="params.flow_l_min" label="Drip flow" :min="0" :max="1" :step="0.001" unit="L/min" />
-                <p class="input-hint">0 L/min means stagnant water. A constant drip supplies water at the initial temperature through a 3 m pipe run. 0.01 L/min = 0.6 L/hr.</p>
-              </section>
-              <section class="engine-section">
-                <label>Calculation engine<select v-model="engine"><option value="estimate">Quick estimate</option><option value="allsolve">Quanscient Allsolve · cloud FEM</option></select></label>
-                <p class="input-hint">{{ engine === 'estimate' ? 'Local lumped estimate. No cloud credentials needed.' : 'Runs the coupled pipe model in Allsolve. Uses your configured account and cloud compute.' }}</p>
-              </section>
-            </fieldset>
-            <button class="run-button" type="submit" :disabled="busy"><span>{{ busy ? 'Simulation running…' : 'Run simulation' }}</span><span aria-hidden="true">{{ busy ? '◌' : '→' }}</span></button>
-            <div v-if="busy" class="progress-area" role="status"><progress :value="progress" max="100"></progress><span>{{ message }}</span></div>
-            <p v-if="error" class="error-message" role="alert">{{ error }}</p>
-          </form>
+          <div class="panel-heading"><h2>Configure your pipe</h2><span class="step-number">01</span></div>
+          <ParameterPanel />
         </aside>
 
         <!-- Column 2: 3D models stacked -->
@@ -208,39 +82,39 @@ onUnmounted(() => {
         </div>
 
         <div class="results-panel">
-          <div v-if="stale" class="stale-notice" role="status">Parameters changed. Run again to update the results below.</div>
-          <template v-if="result">
-            <section class="risk-card" :class="'risk-' + result.risk">
-              <div class="risk-icon" aria-hidden="true">{{ result.risk === 'freezing' ? '❄' : result.risk === 'near' ? '!' : '✓' }}</div>
-              <div class="risk-copy"><p class="eyebrow">SIMULATION ASSESSMENT</p><h2>{{ title }}</h2><p>{{ result.raw.verdict.headline }}</p></div>
-              <span class="engine-badge">{{ result.engine === 'allsolve' ? 'ALLSOLVE FEM' : 'QUICK ESTIMATE' }}</span>
+          <div v-if="store.resultsStale" class="stale-notice" role="status">Parameters changed. Run again to update the results below.</div>
+          <template v-if="result && risk">
+            <section class="risk-card" :class="'risk-' + risk.key">
+              <div class="risk-icon" aria-hidden="true">{{ risk.icon }}</div>
+              <div class="risk-copy"><p class="eyebrow">SIMULATION ASSESSMENT</p><h2>{{ risk.title }}</h2><p>{{ result.verdict.headline }}</p></div>
+              <span class="engine-badge">{{ result.mode === 'simulation' ? 'ALLSOLVE FEM' : 'QUICK ESTIMATE' }}</span>
             </section>
             <div class="metrics-grid">
-              <div class="metric"><p>Critical outside temperature</p><strong>{{ formatTemperature(result.raw.critical_ambient_c) }}</strong><span>{{ result.raw.critical_note ?? 'Blocks within the ' + result.raw.parameters.cold_snap_hours + ' h cold snap below this' }}</span></div>
-              <div class="metric"><p>First ice</p><strong>{{ formatHours(result.raw.t_onset_hours) }}</strong><span>At {{ result.raw.parameters.outside_temp_c }} °C outside</span></div>
-              <div class="metric"><p>Blocked</p><strong>{{ formatHours(result.raw.t_blockage_hours) }}</strong><span>90% of the water is ice</span></div>
+              <div class="metric"><p>Critical outside temperature</p><strong>{{ formatTemperature(result.critical_ambient_c) }}</strong><span>{{ result.critical_note ?? 'Blocks within the ' + result.parameters.cold_snap_hours + ' h cold snap below this' }}</span></div>
+              <div class="metric"><p>First ice</p><strong>{{ formatHours(result.t_onset_hours) }}</strong><span>At {{ result.parameters.outside_temp_c }} °C outside</span></div>
+              <div class="metric"><p>Blocked</p><strong>{{ formatHours(result.t_blockage_hours) }}</strong><span>90% of the water is ice</span></div>
             </div>
 
             <section class="assumptions-card">
               <div class="card-heading"><div><p class="eyebrow">CONDITIONS USED IN THIS RUN</p><h2>Verdict details &amp; advice</h2></div></div>
-              <div class="derived-values"><span>External heat transfer <b>{{ result.raw.h_out.toFixed(1) }} W/m²·K</b></span><span>Surroundings <b>{{ formatTemperature(result.raw.surroundings_c) }}</b></span></div>
-              <ul class="verdict-list"><li v-for="line in result.raw.verdict.details" :key="line">{{ line }}</li></ul>
-              <div v-if="result.raw.verdict.actions.length" class="verdict-actions"><h3>What to do</h3><ul><li v-for="action in result.raw.verdict.actions" :key="action">{{ action }}</li></ul></div>
-              <details><summary>Model assumptions and limits</summary><ul><li v-for="assumption in [...result.raw.assumptions, ...result.raw.verdict.caveats]" :key="assumption">{{ assumption }}</li></ul></details>
+              <div class="derived-values"><span>External heat transfer <b>{{ result.h_out.toFixed(1) }} W/m²·K</b></span><span>Surroundings <b>{{ formatTemperature(result.surroundings_c) }}</b></span></div>
+              <ul class="verdict-list"><li v-for="line in result.verdict.details" :key="line">{{ line }}</li></ul>
+              <div v-if="result.verdict.actions.length" class="verdict-actions"><h3>What to do</h3><ul><li v-for="action in result.verdict.actions" :key="action">{{ action }}</li></ul></div>
+              <details><summary>Model assumptions and limits</summary><ul><li v-for="assumption in [...result.assumptions, ...result.verdict.caveats]" :key="assumption">{{ assumption }}</li></ul></details>
             </section>
 
             <section class="chart-card">
               <div class="card-heading"><div><p class="eyebrow">THERMAL RESPONSE</p><h2>How fast does the water cool?</h2></div><button class="text-button" type="button" @click="exportResult">Export CSV ↗</button></div>
-              <ResultsChart :results="result.raw" />
-              <div class="result-actions"><button type="button" class="outline-button" :disabled="stale || comparison.length >= 4 || busy" @click="saveScenario">+ Save scenario for comparison</button></div>
+              <ResultsChart :results="result" />
+              <div class="result-actions"><button type="button" class="outline-button" :disabled="store.resultsStale || comparison.length >= 4 || store.isRunning" @click="saveScenario">+ Save scenario for comparison</button></div>
             </section>
 
             <section v-if="comparison.length" class="comparison-card">
               <div class="card-heading"><div><p class="eyebrow">EXPLORE THE TRADEOFFS</p><h2>Scenario comparison</h2></div><button type="button" class="text-button" @click="comparison = []">Clear</button></div>
-              <div class="table-scroll"><table><thead><tr><th>Scenario</th><th>Ambient</th><th>Insulation</th><th>Flow</th><th>Exposure</th><th>First ice</th><th>Blocked</th><th></th></tr></thead><tbody><tr v-for="(scenario, index) in comparison" :key="index"><td>{{ index + 1 }} · {{ scenario.engine === 'estimate' ? 'Estimate' : 'Allsolve' }}</td><td>{{ scenario.parameters.ambient_c }} °C</td><td>{{ scenario.parameters.insulation_mm }} mm</td><td>{{ scenario.parameters.flow_l_min }} L/min</td><td>{{ scenario.parameters.duration_h }} hr</td><td>{{ formatHours(scenario.raw.t_onset_hours) }}</td><td>{{ formatHours(scenario.raw.t_blockage_hours) }}</td><td><button type="button" class="text-button" :aria-label="'Remove scenario ' + (index + 1)" @click="comparison.splice(index, 1)">×</button></td></tr></tbody></table></div>
+              <div class="table-scroll"><table><thead><tr><th>Scenario</th><th>Ambient</th><th>Insulation</th><th>Flow</th><th>Exposure</th><th>First ice</th><th>Blocked</th><th></th></tr></thead><tbody><tr v-for="(scenario, index) in comparison" :key="index"><td>{{ index + 1 }} · {{ scenario.mode === 'demo' ? 'Demo' : 'Allsolve' }}</td><td>{{ scenario.parameters.outside_temp_c }} °C</td><td>{{ insulationLabel(scenario) }}</td><td>{{ scenario.parameters.drip_flow_lpm }} L/min</td><td>{{ scenario.parameters.cold_snap_hours }} h</td><td>{{ formatHours(scenario.t_onset_hours) }}</td><td>{{ formatHours(scenario.t_blockage_hours) }}</td><td><button type="button" class="text-button" :aria-label="'Remove scenario ' + (index + 1)" @click="comparison.splice(index, 1)">×</button></td></tr></tbody></table></div>
             </section>
           </template>
-          <section v-else class="empty-card"><div class="empty-symbol">◎</div><h2>Understand your cold-weather exposure</h2><p>Choose a scenario or enter your pipe parameters, then run the model to see when ice forms and when the pipe blocks.</p></section>
+          <section v-else class="empty-card"><div class="empty-symbol">◎</div><h2>Understand your cold-weather exposure</h2><p>Set up your pipe and the cold snap, then run the model to see when ice forms and when the pipe blocks.</p></section>
         </div>
       </div>
       <section class="physics-note">
@@ -387,51 +261,15 @@ onUnmounted(() => {
 .panel-heading { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
 .panel-heading h2, .card-heading h2 { font-size:16px; font-weight:600; margin:0; letter-spacing:-.2px; }
 .step-number { font-size:12px; color:var(--subtle); font-family:'Outfit',monospace; font-variant-numeric:tabular-nums; }
-.setup-panel fieldset { padding:0; border:0; margin:0; min-width:0; }
-
-/* Presets */
-.presets { display:flex; padding:4px; gap:3px; background:rgba(14,28,40,0.05); border-radius:var(--r-sm); margin-bottom:8px; }
-.presets button {
-  flex:1; padding:8px 4px; border:0; border-radius:7px; color:var(--muted);
-  font-size:13px; font-weight:500; background:transparent; cursor:pointer;
-  font-family:inherit; transition:all .16s ease;
-}
-.presets button:hover { background:rgba(10,150,136,0.1); color:var(--teal); }
-.presets button:active { background:rgba(10,150,136,0.18); }
 
 /* Sections */
 .input-section { padding:15px 0 13px; border-bottom:1px solid var(--line); }
 .input-section h3 { font-size:13px; font-weight:600; display:flex; gap:7px; align-items:center; margin:0 0 11px; color:var(--ink-2); }
 .section-icon { color:var(--teal); font-size:15px; width:17px; text-align:center; opacity:.9; }
-.input-grid { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
-.input-grid + .input-grid { margin-top:9px; }
 .setup-panel label { font-size:13px; color:var(--muted); display:block; line-height:1.5; font-weight:500; }
 .input-hint { color:var(--subtle); font-size:13px; line-height:1.65; margin:7px 0 0; }
 .exposure-note { padding:9px 11px; border-radius:var(--r-xs); background:rgba(10,150,136,0.06); color:#3a7570; font-size:13px; line-height:1.65; margin:0 0 10px; border:1px solid rgba(10,150,136,0.12); }
 
-/* Number inputs */
-.number-input {
-  display:flex; align-items:center;
-  background:rgba(255,255,255,0.68); border:1px solid rgba(14,28,40,0.1);
-  border-radius:var(--r-xs); height:37px; margin-top:5px; overflow:hidden;
-  transition:border-color .15s, box-shadow .15s;
-}
-.number-input:focus-within { border-color:var(--teal); box-shadow:0 0 0 3px rgba(10,150,136,0.11); background:rgba(255,255,255,0.9); }
-.number-input input { font:500 15px 'Outfit',system-ui; width:100%; min-width:0; border:0; outline:none; background:transparent; padding:0 0 0 10px; color:var(--ink); }
-.number-input span { font-size:13px; color:var(--subtle); white-space:nowrap; padding:0 9px 0 3px; }
-
-/* Selects */
-.setup-panel select {
-  display:block; width:100%; padding:0 28px 0 9px; margin-top:5px;
-  border:1px solid rgba(14,28,40,0.1); background:rgba(255,255,255,0.68);
-  border-radius:var(--r-xs); font-size:14px; font-family:inherit; color:var(--ink);
-  height:40px; appearance:none; cursor:pointer;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%235c6e7c' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E");
-  background-repeat:no-repeat; background-position:right 10px center;
-  transition:border-color .15s, box-shadow .15s;
-}
-.setup-panel select:focus { outline:none; border-color:var(--teal); box-shadow:0 0 0 3px rgba(10,150,136,0.11); background-color:rgba(255,255,255,0.9); }
-.input-section > label { margin-top:10px; }
 .engine-section { padding:15px 0 17px; }
 
 /* Run button */

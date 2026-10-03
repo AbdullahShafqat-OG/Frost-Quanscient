@@ -1,62 +1,188 @@
 /**
- * Bridge store: lets the as-branch 3D components (PipeViewer3D, PipeSideSection,
- * MaterialLegend) read pipe geometry and ice-fraction data that is driven by the
- * yo-branch App.vue simulation loop.
- *
- * App.vue calls updateFromResult() after each successful run.
+ * Pinia store for freeze-risk analysis state
  */
 
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
-import type { PipeParams, SeriesPoint } from '@/types'
+import { ref, computed } from 'vue'
+import type { PipeParams, AnalysisResults, SeriesPoint } from '@/types'
 import { DEFAULT_PARAMS } from '@/types'
+import { analysisApi } from '@/api/analysis'
 
 export const useAnalysisStore = defineStore('analysis', () => {
-  // Params in as-backend field names (what the 3D geometry composable reads)
+  // ============================================================================
+  // STATE
+  // ============================================================================
+
   const params = ref<PipeParams>({ ...DEFAULT_PARAMS })
 
-  // Series from the last run (provides ice_fraction for the 3D viewer)
-  const series = ref<SeriesPoint[]>([])
-  const hasResults = ref(false)
+  const analysisId = ref<string | null>(null)
+  const status = ref<'idle' | 'pending' | 'running' | 'completed' | 'failed'>('idle')
+  const progress = ref(0)
+  const message = ref('')
+  const results = ref<AnalysisResults | null>(null)
+  const error = ref<string | null>(null)
 
-  type YoParams = {
-    diameter_mm: number; wall_mm: number; material: string
-    insulation_material: string; insulation_mm: number
-    duration_h: number; ambient_c: number; water_c: number
-    flow_l_min: number
+  // Demo mode toggle (false = full simulation on Allsolve)
+  const useDemoMode = ref(false)
+
+  let pollTimer: ReturnType<typeof setTimeout> | null = null
+
+  // ============================================================================
+  // GETTERS
+  // ============================================================================
+
+  const isRunning = computed(() => status.value === 'running' || status.value === 'pending')
+  // Results belong to the inputs they were run with; once an input changes they are stale
+  const resultsStale = computed(() => {
+    const r = results.value
+    if (!r) return false
+    return (Object.keys(params.value) as (keyof PipeParams)[]).some(key => params.value[key] !== r.parameters[key])
+  })
+  // The 3D and section views read these, so they show no ice for inputs that haven't been run
+  const hasResults = computed(() => results.value !== null && !resultsStale.value)
+  const series = computed<SeriesPoint[]>(() => (hasResults.value ? results.value!.series : []))
+
+  // ============================================================================
+  // ACTIONS
+  // ============================================================================
+
+  function setParam<K extends keyof PipeParams>(key: K, value: PipeParams[K]) {
+    params.value[key] = value
   }
 
-  /** Translate yo field names → as field names and update store params. */
-  function setParams(yoParams: YoParams) {
-    params.value = {
-      pipe_material: yoParams.material as PipeParams['pipe_material'],
-      inner_diameter_mm: yoParams.diameter_mm,
-      wall_thickness_mm: yoParams.wall_mm,
-      insulation: yoParams.insulation_material as PipeParams['insulation'],
-      insulation_thickness_mm: yoParams.insulation_mm || 25,
-      location: 'outdoors',
-      outside_temp_c: yoParams.ambient_c,
-      cold_snap_hours: yoParams.duration_h,
-      initial_water_temp_c: yoParams.water_c,
-      drip_flow_lpm: yoParams.flow_l_min,
+  function setDemoMode(demo: boolean) {
+    useDemoMode.value = demo
+  }
+
+  function stopPolling() {
+    if (pollTimer) {
+      clearTimeout(pollTimer)
+      pollTimer = null
     }
   }
 
-  /**
-   * Called by App.vue after each simulation run with the yo PipeParams
-   * (front-end field names) and the raw series from the backend.
-   */
-  function updateFromResult(yoParams: YoParams, rawSeries: SeriesPoint[]) {
-    setParams(yoParams)
-    series.value = rawSeries
-    hasResults.value = true
+  async function startAnalysis() {
+    stopPolling()
+    status.value = 'pending'
+    progress.value = 0
+    error.value = null
+    results.value = null
+
+    try {
+      if (useDemoMode.value) {
+        message.value = 'Computing local estimate...'
+        status.value = 'running'
+        const demoResults = await analysisApi.runDemo(params.value)
+        results.value = demoResults
+        analysisId.value = demoResults.analysis_id
+        progress.value = 100
+        status.value = 'completed'
+        message.value = 'Demo estimate complete'
+      } else {
+        message.value = 'Starting Allsolve analysis...'
+        const response = await analysisApi.start(params.value)
+        analysisId.value = response.analysis_id
+        status.value = 'running'
+        message.value = response.message
+        pollStatus()
+      }
+    } catch (e) {
+      status.value = 'failed'
+      error.value = e instanceof Error ? e.message : 'Unknown error'
+      message.value = error.value
+    }
   }
 
-  /** Drop the last run's series so the 3D viewer shows no ice it hasn't computed. */
-  function clearResults() {
-    series.value = []
-    hasResults.value = false
+  async function pollStatus() {
+    if (!analysisId.value) return
+    const id = analysisId.value
+
+    try {
+      const statusResponse = await analysisApi.getStatus(id)
+      if (id !== analysisId.value || !isRunning.value) return // reset/aborted meanwhile
+
+      progress.value = statusResponse.progress
+      message.value = statusResponse.message ?? ''
+
+      if (statusResponse.status === 'completed') {
+        results.value = await analysisApi.getResults(id)
+        status.value = 'completed'
+        message.value = 'Analysis complete'
+      } else if (statusResponse.status === 'failed' || statusResponse.status === 'aborted') {
+        status.value = 'failed'
+        error.value = statusResponse.message ?? 'Analysis failed'
+        message.value = error.value
+      } else {
+        pollTimer = setTimeout(pollStatus, 1000)
+      }
+    } catch (e) {
+      status.value = 'failed'
+      error.value = e instanceof Error ? e.message : 'Failed to get status'
+      message.value = error.value
+    }
   }
 
-  return { params, series, hasResults, setParams, updateFromResult, clearResults }
+  async function abortAnalysis() {
+    if (!isRunning.value) return
+    stopPolling()
+
+    if (!analysisId.value || useDemoMode.value) {
+      status.value = 'idle'
+      message.value = 'Aborted'
+      progress.value = 0
+      return
+    }
+
+    try {
+      message.value = 'Aborting analysis...'
+      await analysisApi.abort(analysisId.value)
+      message.value = 'Analysis aborted'
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to abort'
+      message.value = error.value
+    }
+    // Idle either way so the user can retry
+    status.value = 'idle'
+    progress.value = 0
+  }
+
+  function reset() {
+    stopPolling()
+    status.value = 'idle'
+    progress.value = 0
+    message.value = ''
+    results.value = null
+    error.value = null
+    analysisId.value = null
+  }
+
+  function resetParams() {
+    params.value = { ...DEFAULT_PARAMS }
+  }
+
+  return {
+    // State
+    params,
+    analysisId,
+    status,
+    progress,
+    message,
+    results,
+    error,
+    useDemoMode,
+
+    // Getters
+    isRunning,
+    resultsStale,
+    hasResults,
+    series,
+
+    // Actions
+    setParam,
+    setDemoMode,
+    startAnalysis,
+    abortAnalysis,
+    reset,
+    resetParams,
+  }
 })
