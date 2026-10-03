@@ -204,6 +204,8 @@ function toFrontendResult(p: PipeParams, r: any): PipeResult {
     residence_minutes: c.velocity > 0 ? p.length_m / c.velocity / 60 : null,
     history,
     profile,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rawSeries: (r.series ?? []) as any,
   }
 }
 

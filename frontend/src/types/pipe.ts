@@ -20,5 +20,7 @@ export interface PipeResult {
   residence_minutes: number | null
   history: { hours: number; temperature_c: number; interface_temperature_c: number }[]
   profile: { distance_m: number; temperature_c: number }[]
+  /** Raw backend series preserved for the 3D viewer (ice_fraction) */
+  rawSeries?: { time_hours: number; t_min_water_c: number; t_avg_water_c: number; t_max_water_c: number; ice_fraction: number }[]
 }
 
