@@ -1,8 +1,8 @@
 """
-Beer Cooling Simulation API
+Pipe Freeze-Risk API
 
-A FastAPI application that provides endpoints for running thermal simulations
-of beer cooling using the Allsolve SDK.
+A FastAPI application that estimates how cold it can get, and for how long,
+before water in an exposed pipe freezes, using the Allsolve SDK.
 """
 
 import logging
@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .routers import simulation_router
+from .routers import analysis_router
 
 # Configure logging
 logging.basicConfig(
@@ -27,35 +27,36 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 logger.info("=" * 60)
-logger.info("🍺 BEER COOLING SIMULATOR BACKEND STARTING")
+logger.info("❄️ PIPE FREEZE-RISK ANALYSER BACKEND STARTING")
 logger.info("=" * 60)
 logger.info(f"   Allsolve Host: {settings.qs_host}")
 logger.info(f"   API Key configured: {'✅ Yes' if settings.qs_access_key else '❌ No'}")
 logger.info(f"   Debug mode: {settings.debug}")
 
 app = FastAPI(
-    title="Beer Cooling Simulator API",
+    title="Pipe Freeze-Risk Analyser API",
     description="""
-    🍺 Simulate how quickly your beer cools down in different environments!
+    ❄️ How cold can it get, and for how long, before your water pipe freezes?
 
     This API provides endpoints to:
-    - Start thermal simulations of beer cooling
-    - Monitor simulation progress in real-time
-    - Retrieve temperature vs time results
+    - Start a freeze-risk analysis on Allsolve (or a local demo estimate)
+    - Monitor progress in real-time
+    - Retrieve water temperature / ice fraction curves, the critical ambient
+      temperature and a plain-language verdict
 
     ## Physics Model
 
-    The simulation solves the transient heat conduction equation:
+    Transient heat conduction in water, pipe wall and insulation:
 
-    **ρ Cₚ ∂T/∂t = ∇ · (k ∇T)**
+    **ρ Cₚ,eff ∂T/∂t = ∇ · (k ∇T)**
 
-    With convective boundary conditions:
+    Freezing via an apparent heat capacity in the water:
 
-    **q = h (T_surface - T_coolant)**
+    **ρ Cₚ,eff = ρ Cₚ + ρ L · exp(-((T-T_f)/ΔT)²) / (ΔT √π)**
 
-    Where:
-    - h = 600 W/(m²·K) for ice water immersion
-    - h = 10 W/(m²·K) for air exposure
+    Convection + radiation on the outer surface, h = 5.7 + 3.8·v W/(m²·K):
+
+    **q = h (T_ambient - T_surface)**
     """,
     version="1.0.0",
     docs_url="/docs",
@@ -77,7 +78,7 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(simulation_router)
+app.include_router(analysis_router)
 
 
 @app.get("/")
@@ -86,14 +87,15 @@ async def root():
     return {
         "name": settings.app_name,
         "version": "1.0.0",
-        "description": "Beer Cooling Simulation API",
+        "description": "Pipe Freeze-Risk Analysis API",
         "docs": "/docs",
         "endpoints": {
-            "start_simulation": "POST /api/simulation/start",
-            "get_status": "GET /api/simulation/{id}/status",
-            "get_results": "GET /api/simulation/{id}/results",
-            "demo": "POST /api/simulation/{id}/demo",
-            "websocket": "WS /api/simulation/{id}/ws",
+            "start_analysis": "POST /api/analysis/start",
+            "get_status": "GET /api/analysis/{id}/status",
+            "get_results": "GET /api/analysis/{id}/results",
+            "abort": "POST /api/analysis/{id}/abort",
+            "demo": "POST /api/analysis/{id}/demo",
+            "websocket": "WS /api/analysis/{id}/ws",
         },
     }
 

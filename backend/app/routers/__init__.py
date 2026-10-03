@@ -1,6 +1,5 @@
-"""API routers for the beer cooling simulation."""
+"""API routers for the pipe freeze-risk analyser."""
 
-from .simulation import router as simulation_router
+from .analysis import router as analysis_router
 
-__all__ = ["simulation_router"]
-
+__all__ = ["analysis_router"]

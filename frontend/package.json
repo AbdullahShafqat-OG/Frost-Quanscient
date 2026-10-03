@@ -1,5 +1,5 @@
 {
-  "name": "beer-cooling-app",
+  "name": "pipe-freeze-app",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -10,18 +10,14 @@
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix"
   },
   "dependencies": {
-    "@tresjs/cientos": "^3.8.0",
-    "@tresjs/core": "^3.7.0",
     "@vueuse/core": "^10.7.2",
     "chart.js": "^4.4.1",
     "pinia": "^2.1.7",
-    "three": "^0.160.1",
     "vue": "^3.4.15",
     "vue-chartjs": "^5.3.0",
     "vue-router": "^4.2.5"
   },
   "devDependencies": {
-    "@types/three": "^0.160.0",
     "@vitejs/plugin-vue": "^5.0.3",
     "autoprefixer": "^10.4.17",
     "postcss": "^8.4.33",
@@ -31,4 +27,3 @@
     "vue-tsc": "^1.8.27"
   }
 }
-

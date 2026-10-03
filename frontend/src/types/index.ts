@@ -1,133 +1,149 @@
 /**
- * Type definitions for the Beer Cooling Simulator
+ * Type definitions for the Pipe Freeze-Risk Analyser
  */
 
-export type ContainerShape = 'can' | 'bottle' | 'pint'
-export type CoolingMethod = 'ice_water' | 'refrigerator' | 'freezer' | 'salt_ice'
+export type PipeMaterial = 'copper' | 'steel' | 'pvc' | 'pex'
+export type InsulationType = 'fiberglass' | 'foam_wrap' | 'mineral_wool' | 'none'
+export type Location = 'underground' | 'indoors' | 'outdoors'
 
-export interface SimulationParams {
-  container_shape: ContainerShape
-  cooling_method: CoolingMethod
-  initial_temp_celsius: number
-  target_temp_celsius: number
-  immersion_level: number
-  simulation_duration_minutes: number
+export interface PipeParams {
+  // Pipe
+  pipe_material: PipeMaterial
+  inner_diameter_mm: number
+  wall_thickness_mm: number
+  insulation: InsulationType
+  insulation_thickness_mm: number
+  // External conditions
+  location: Location
+  outside_temp_c: number
+  cold_snap_hours: number
+  // Water
+  initial_water_temp_c: number
+  drip_flow_lpm: number
 }
 
-export interface TemperaturePoint {
-  time_seconds: number
-  temperature_celsius: number
-}
-
-export interface SimulationResponse {
-  simulation_id: string
-  project_id: string
+export interface AnalysisResponse {
+  analysis_id: string
   status: string
   message: string
 }
 
-export interface SimulationStatus {
-  simulation_id: string
-  status: 'pending' | 'running' | 'completed' | 'failed'
+export type AnalysisState = 'pending' | 'running' | 'completed' | 'failed' | 'aborted'
+
+export interface AnalysisStatus {
+  analysis_id: string
+  status: AnalysisState
   progress: number
-  current_time_seconds?: number
-  current_temperature_celsius?: number
   message?: string
 }
 
-export interface SimulationResults {
-  simulation_id: string
-  status: string
-  temperature_history: TemperaturePoint[]
-  time_to_target_seconds?: number
-  final_temperature_celsius: number
-  total_simulation_time_seconds: number
-  parameters: SimulationParams
+export interface SeriesPoint {
+  time_hours: number
+  t_min_water_c: number
+  t_avg_water_c: number
+  t_max_water_c: number
+  ice_fraction: number
 }
 
-// Container specifications for visualization
-export interface ContainerSpec {
-  radius: number
-  height: number
-  wall_thickness: number
-  volume_ml: number
+export interface SweepPoint {
+  ambient_c: number
+  t_onset_hours: number | null
+  t_blockage_hours: number | null
+}
+
+export type VerdictLevel = 'safe' | 'at_risk' | 'freezes'
+
+export interface Verdict {
+  level: VerdictLevel
+  headline: string
+  details: string[]
+  actions: string[]
+  caveats: string[]
+}
+
+export interface AnalysisResults {
+  analysis_id: string
+  mode: 'simulation' | 'demo'
+  status: string
+  parameters: PipeParams
+  h_out: number
+  surroundings_c: number
+  assumptions: string[]
+  window_hours: number
+  series: SeriesPoint[]
+  t_onset_hours: number | null
+  t_blockage_hours: number | null
+  critical_ambient_c: number | null
+  critical_note: string | null
+  sweep: SweepPoint[]
+  verdict: Verdict
+}
+
+// Material tables for the UI (the backend holds the full property set)
+export interface MaterialSpec {
   label: string
+  k: number
   color: string
 }
 
-export const CONTAINER_SPECS: Record<ContainerShape, ContainerSpec> = {
-  can: {
-    radius: 0.033,
-    height: 0.122,
-    wall_thickness: 0.0002,
-    volume_ml: 330,
-    label: 'Beer Can (330ml)',
-    color: '#C0C0C0',
-  },
-  bottle: {
-    radius: 0.035,
-    height: 0.230,
-    wall_thickness: 0.003,
-    volume_ml: 500,
-    label: 'Bottle (500ml)',
-    color: '#8B4513',
-  },
-  pint: {
-    radius: 0.042,
-    height: 0.150,
-    wall_thickness: 0.004,
-    volume_ml: 568,
-    label: 'Pint Glass (568ml)',
-    color: '#F5F5DC',
-  },
+export const PIPE_MATERIALS: Record<PipeMaterial, MaterialSpec> = {
+  copper: { label: 'Copper', k: 400, color: '#B87333' },
+  steel: { label: 'Steel', k: 50, color: '#71797E' },
+  pvc: { label: 'PVC', k: 0.19, color: '#F5F5F5' },
+  pex: { label: 'PEX', k: 0.4, color: '#E0E0E0' },
 }
 
-export interface CoolingSpec {
-  h_submerged: number
-  h_exposed: number
-  coolant_temp_celsius: number
+export const INSULATION_TYPES: Record<InsulationType, MaterialSpec> = {
+  fiberglass: { label: 'Fiberglass', k: 0.035, color: '#FCD34D' },
+  foam_wrap: { label: 'Foam wrap', k: 0.038, color: '#4B5563' },
+  mineral_wool: { label: 'Mineral wool', k: 0.037, color: '#A8A29E' },
+  none: { label: 'No insulation', k: 0, color: 'transparent' },
+}
+
+/** Location is fixed in this version (backend: FIXED_LOCATION) */
+export const FIXED_LOCATION: Location = 'outdoors'
+
+export interface LocationSpec {
   label: string
-  emoji: string
+  summary: string
 }
 
-export const COOLING_SPECS: Record<CoolingMethod, CoolingSpec> = {
-  ice_water: {
-    h_submerged: 600,
-    h_exposed: 10,
-    coolant_temp_celsius: 0,
-    label: 'Ice Water Bath',
-    emoji: '🧊',
+/** Fixed surroundings per location (backend: analysis/environment.py) */
+export const LOCATIONS: Record<Location, LocationSpec> = {
+  underground: {
+    label: 'Underground',
+    summary: '0.45 m deep in moist loam starting at 5°C; the cold soaks down from the surface over time.',
   },
-  refrigerator: {
-    h_submerged: 10,
-    h_exposed: 10,
-    coolant_temp_celsius: 4,
-    label: 'Refrigerator',
-    emoji: '❄️',
+  indoors: {
+    label: 'Indoors',
+    summary: 'In a wall or unheated space of a building heated to 20°C; the space sits 30% of the way from outside to indoor temperature.',
   },
-  freezer: {
-    h_submerged: 15,
-    h_exposed: 15,
-    coolant_temp_celsius: -18,
-    label: 'Freezer',
-    emoji: '🥶',
-  },
-  salt_ice: {
-    h_submerged: 800,
-    h_exposed: 10,
-    coolant_temp_celsius: -5,
-    label: 'Salt & Ice',
-    emoji: '🧂',
+  outdoors: {
+    label: 'Outdoors',
+    summary: 'Exposed to outside air with a constant 3 m/s wind.',
   },
 }
 
-export function formatTime(seconds: number): string {
-  const mins = Math.floor(seconds / 60)
-  const secs = Math.floor(seconds % 60)
-  return `${mins}:${secs.toString().padStart(2, '0')}`
+export const DEFAULT_PARAMS: PipeParams = {
+  pipe_material: 'copper',
+  inner_diameter_mm: 15,
+  wall_thickness_mm: 1,
+  insulation: 'none',
+  insulation_thickness_mm: 13,
+  location: FIXED_LOCATION,
+  outside_temp_c: -10,
+  cold_snap_hours: 8,
+  initial_water_temp_c: 10,
+  drip_flow_lpm: 0,
 }
 
-export function formatTemperature(celsius: number): string {
+export function formatHours(hours: number | null | undefined): string {
+  if (hours === null || hours === undefined) return '—'
+  if (hours < 1) return `${Math.round(hours * 60)} min`
+  return `${hours.toFixed(1)} h`
+}
+
+export function formatTemperature(celsius: number | null | undefined): string {
+  if (celsius === null || celsius === undefined) return '—'
   return `${celsius.toFixed(1)}°C`
 }
-

@@ -15,7 +15,7 @@ pydantic-settings>=2.1.0
 pyyaml>=6.0.1
 
 # Allsolve SDK
-# allsolve>=0.2.0
+allsolve>=0.5.2  # VariableOverrides sweeps, SimulationOutputData sweep accessors
 
 # Utilities
 python-dotenv>=1.0.0

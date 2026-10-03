@@ -31,18 +31,6 @@ export default {
           800: '#492DC8',
           900: '#381FBF',
         },
-        beer: {
-          50: '#fefce8',
-          100: '#fef9c3',
-          200: '#fef08a',
-          300: '#fde047',
-          400: '#facc15',
-          500: '#eab308',
-          600: '#ca8a04',
-          700: '#a16207',
-          800: '#854d0e',
-          900: '#713f12',
-        },
         ice: {
           50: '#f0f9ff',
           100: '#e0f2fe',
@@ -58,15 +46,6 @@ export default {
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
-      },
-      animation: {
-        'bubble': 'bubble 3s ease-in-out infinite',
-      },
-      keyframes: {
-        bubble: {
-          '0%, 100%': { transform: 'translateY(0) scale(1)', opacity: '0.5' },
-          '50%': { transform: 'translateY(-20px) scale(1.1)', opacity: '0.8' },
-        },
       },
     },
   },
