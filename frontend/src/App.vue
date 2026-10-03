@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onMounted, onUnmounted, reactive, ref, watch, watchEffect } from 'vue'
-import PipeChart from '@/components/PipeChart.vue'
 import SliderInput from '@/components/SliderInput.vue'
 import PipeSideSection from '@/components/PipeSideSection.vue'
 import MaterialLegend from '@/components/MaterialLegend.vue'
+import VerdictCard from '@/components/VerdictCard.vue'
+import ResultsChart from '@/components/ResultsChart.vue'
 import type { PipeParams, PipeResult } from '@/types/pipe'
 import { runEstimate, startJob, pollJob } from '@/api/analysis'
 import { useAnalysisStore } from '@/stores/analysisStore'
@@ -31,8 +32,6 @@ let pollTimer: ReturnType<typeof setTimeout> | undefined
 let requestController: AbortController | undefined
 const stale = computed(() => result.value !== null &&
   Object.keys(defaults).some(key => params[key as keyof PipeParams] !== result.value?.parameters[key as keyof PipeParams]))
-const title = computed(() => result.value?.risk === 'freezing' ? 'Freezing onset predicted' :
-  result.value?.risk === 'near' ? 'Close to freezing' : 'Above freezing during exposure')
 watch(() => params.insulation_material, material => {
   if (material === 'none') params.insulation_mm = 0
   else if (params.insulation_mm === 0) params.insulation_mm = 20
@@ -41,12 +40,6 @@ watch(() => params.insulation_material, material => {
 // Keep the 3D model in sync with form params without needing a run
 watchEffect(() => {
   analysisStore.setParams({ ...params })
-})
-const summary = computed(() => {
-  const r = result.value
-  if (!r) return 'Set up a pipe and run a simulation to explore the conditions.'
-  if (r.freeze_hours !== null) return 'Water at the inner pipe wall reaches 0 °C after ' + formatTime(r.freeze_hours) + '. Bulk water may still be warmer. The calculation ends at first freezing onset.'
-  return 'The estimated water / inner-wall interface stays above 0 °C throughout the ' + r.parameters.duration_h + '-hour cold exposure.'
 })
 function formatTime(hours: number | null) {
   if (hours === null) return 'No onset'
@@ -68,7 +61,7 @@ async function poll(id: string, snapshot: PipeParams) {
     progress.value = job.progress
     if (job.status === 'completed') {
       result.value = job.result!
-      analysisStore.updateFromResult(snapshot, job.result!.rawSeries ?? [])
+      analysisStore.updateFromResult(snapshot, job.result!.rawResults)
       busy.value = false
     } else if (job.status === 'failed') {
       throw new Error(job.message)
@@ -95,7 +88,7 @@ async function run() {
       const response = await runEstimate(snapshot, requestController.signal)
       if (!disposed) {
         result.value = response
-        analysisStore.updateFromResult(snapshot, response.rawSeries ?? [])
+        analysisStore.updateFromResult(snapshot, response.rawResults)
         busy.value = false
       }
     } else {
@@ -217,38 +210,16 @@ onUnmounted(() => {
 
         <div class="results-panel">
           <div v-if="stale" class="stale-notice" role="status">Parameters changed. Run again to update the results below.</div>
-          <template v-if="result">
-            <section class="risk-card" :class="'risk-' + result.risk">
-              <div class="risk-icon" aria-hidden="true">{{ result.risk === 'freezing' ? '❄' : result.risk === 'near' ? '!' : '✓' }}</div>
-              <div class="risk-copy"><p class="eyebrow">SIMULATION ASSESSMENT</p><h2>{{ title }}</h2><p>{{ summary }}</p></div>
-              <span class="engine-badge">{{ result.engine === 'allsolve' ? 'ALLSOLVE FEM' : 'QUICK ESTIMATE' }}</span>
-            </section>
-            <div class="metrics-grid">
-              <div class="metric"><p>Time to freezing onset</p><strong>{{ formatTime(result.freeze_hours) }}</strong><span>Within {{ result.parameters.duration_h }} hr of exposure</span></div>
-              <div class="metric"><p>Coldest bulk water</p><strong>{{ result.minimum_c.toFixed(1) }}<small> °C</small></strong><span>At {{ formatTime(result.end_hours) }}</span></div>
-              <div class="metric"><p>Steady flow threshold · estimate</p><strong>{{ result.critical_flow_l_min.toFixed(3) }}<small> L/min</small></strong><span>{{ result.flow_threshold_note }}</span></div>
-            </div>
-
-            <section class="assumptions-card">
-              <div class="card-heading"><div><p class="eyebrow">CONDITIONS USED IN THIS RUN</p><h2>Derived heat transfer & approximations</h2></div></div>
-              <div class="derived-values"><span>Pipe conductivity <b>{{ result.environment.pipe_k_w_mk }} W/m·K</b></span><span>Insulation conductivity <b>{{ result.environment.insulation_k_w_mk === null ? 'None' : result.environment.insulation_k_w_mk + ' W/m·K' }}</b></span><span>External convection + radiation <b>{{ result.environment.external_h_w_m2k.toFixed(1) }} W/m²·K</b></span><span>Water-side heat transfer <b>{{ result.environment.internal_h_w_m2k.toFixed(1) }} W/m²·K</b></span></div>
-              <p v-if="result.freeze_hours !== null && result.minimum_c > 0" class="wall-note">At first freezing onset the bulk water is still {{ result.minimum_c.toFixed(1) }} °C. The reported event is water at the inner pipe wall reaching 0 °C.</p>
-              <details><summary>Model assumptions and limits</summary><ul><li v-for="assumption in result.assumptions" :key="assumption">{{ assumption }}</li></ul></details>
-            </section>
-
-            <section class="chart-card">
-              <div class="card-heading"><div><p class="eyebrow">THERMAL RESPONSE</p><h2>How fast does the water cool?</h2></div><button class="text-button" type="button" @click="exportResult">Export CSV ↗</button></div>
-              <PipeChart :result="result" />
-              <p v-if="result.freeze_hours !== null" class="chart-note">The curves end when the water / inner-wall interface reaches 0 °C. Ice growth is outside this model.</p>
-              <div class="result-actions"><button type="button" class="outline-button" :disabled="stale || comparison.length >= 4 || busy" @click="saveScenario">+ Save scenario for comparison</button><a v-if="result.project_url" :href="result.project_url" target="_blank" rel="noopener noreferrer">Open Allsolve project ↗</a></div>
-            </section>
-
-            <section v-if="comparison.length" class="comparison-card">
-              <div class="card-heading"><div><p class="eyebrow">EXPLORE THE TRADEOFFS</p><h2>Scenario comparison</h2></div><button type="button" class="text-button" @click="comparison = []">Clear</button></div>
-              <div class="table-scroll"><table><thead><tr><th>Scenario</th><th>Ambient</th><th>Insulation</th><th>Flow</th><th>Exposure</th><th>Freezing onset</th><th>Minimum</th><th></th></tr></thead><tbody><tr v-for="(scenario, index) in comparison" :key="index"><td>{{ index + 1 }} · {{ scenario.engine === 'estimate' ? 'Estimate' : 'Allsolve' }}</td><td>{{ scenario.parameters.ambient_c }} °C</td><td>{{ scenario.parameters.insulation_mm }} mm</td><td>{{ scenario.parameters.flow_l_min }} L/min</td><td>{{ scenario.parameters.duration_h }} hr</td><td>{{ formatTime(scenario.freeze_hours) }}</td><td>{{ scenario.minimum_c.toFixed(1) }} °C</td><td><button type="button" class="text-button" :aria-label="'Remove scenario ' + (index + 1)" @click="comparison.splice(index, 1)">×</button></td></tr></tbody></table></div>
-            </section>
-          </template>
-          <section v-else class="empty-card"><div class="empty-symbol">◎</div><h2>Understand your cold-weather exposure</h2><p>Choose a scenario or enter your pipe parameters, then run the model to see freezing onset and water temperatures.</p></section>
+          <VerdictCard />
+          <section v-if="result" class="chart-card">
+            <div class="card-heading"><div><p class="eyebrow">THERMAL RESPONSE</p><h2>Water temperature &amp; ice</h2></div><button class="text-button" type="button" @click="exportResult">Export CSV ↗</button></div>
+            <div style="padding: 16px 22px 8px"><ResultsChart /></div>
+            <div class="result-actions"><button type="button" class="outline-button" :disabled="stale || comparison.length >= 4 || busy" @click="saveScenario">+ Save scenario for comparison</button><a v-if="result.project_url" :href="result.project_url" target="_blank" rel="noopener noreferrer">Open Allsolve project ↗</a></div>
+          </section>
+          <section v-if="comparison.length" class="comparison-card">
+            <div class="card-heading"><div><p class="eyebrow">EXPLORE THE TRADEOFFS</p><h2>Scenario comparison</h2></div><button type="button" class="text-button" @click="comparison = []">Clear</button></div>
+            <div class="table-scroll"><table><thead><tr><th>Scenario</th><th>Ambient</th><th>Insulation</th><th>Flow</th><th>Exposure</th><th>Freezing onset</th><th>Minimum</th><th></th></tr></thead><tbody><tr v-for="(scenario, index) in comparison" :key="index"><td>{{ index + 1 }} · {{ scenario.engine === 'estimate' ? 'Estimate' : 'Allsolve' }}</td><td>{{ scenario.parameters.ambient_c }} °C</td><td>{{ scenario.parameters.insulation_mm }} mm</td><td>{{ scenario.parameters.flow_l_min }} L/min</td><td>{{ scenario.parameters.duration_h }} hr</td><td>{{ formatTime(scenario.freeze_hours) }}</td><td>{{ scenario.minimum_c.toFixed(1) }} °C</td><td><button type="button" class="text-button" :aria-label="'Remove scenario ' + (index + 1)" @click="comparison.splice(index, 1)">×</button></td></tr></tbody></table></div>
+          </section>
         </div>
       </div>
       <section class="physics-note">

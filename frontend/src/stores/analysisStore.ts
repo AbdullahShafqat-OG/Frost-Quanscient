@@ -1,23 +1,25 @@
 /**
- * Bridge store: lets the as-branch 3D components (PipeViewer3D, PipeSideSection,
- * MaterialLegend) read pipe geometry and ice-fraction data that is driven by the
- * yo-branch App.vue simulation loop.
- *
- * App.vue calls updateFromResult() after each successful run.
+ * Bridge store: lets the as-branch components (PipeViewer3D, PipeSideSection,
+ * MaterialLegend, VerdictCard, ResultsChart) read pipe geometry, series data,
+ * and full analysis results driven by the yo-branch App.vue simulation loop.
  */
 
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
-import type { PipeParams, SeriesPoint } from '@/types'
+import { ref, computed } from 'vue'
+import type { PipeParams, SeriesPoint, AnalysisResults } from '@/types'
 import { DEFAULT_PARAMS } from '@/types'
 
 export const useAnalysisStore = defineStore('analysis', () => {
   // Params in as-backend field names (what the 3D geometry composable reads)
   const params = ref<PipeParams>({ ...DEFAULT_PARAMS })
 
-  // Series from the last run (provides ice_fraction for the 3D viewer)
-  const series = ref<SeriesPoint[]>([])
-  const hasResults = ref(false)
+  // Full raw AnalysisResults from the backend (drives VerdictCard + ResultsChart)
+  const results = ref<AnalysisResults | null>(null)
+
+  // Series is derived from results so it stays in sync automatically
+  const series = computed<SeriesPoint[]>(() => results.value?.series ?? [])
+
+  const hasResults = computed(() => results.value !== null)
 
   type YoParams = {
     diameter_mm: number; wall_mm: number; material: string
@@ -42,15 +44,18 @@ export const useAnalysisStore = defineStore('analysis', () => {
     }
   }
 
-  /**
-   * Called by App.vue after each simulation run with the yo PipeParams
-   * (front-end field names) and the raw series from the backend.
-   */
-  function updateFromResult(yoParams: YoParams, rawSeries: SeriesPoint[]) {
-    setParams(yoParams)
-    series.value = rawSeries
-    hasResults.value = true
+  /** Store the full raw backend response for VerdictCard / ResultsChart. */
+  function setResults(r: AnalysisResults) {
+    results.value = r
   }
 
-  return { params, series, hasResults, setParams, updateFromResult }
+  /**
+   * Called by App.vue after each simulation run.
+   */
+  function updateFromResult(yoParams: YoParams, rawResults: AnalysisResults) {
+    setParams(yoParams)
+    setResults(rawResults)
+  }
+
+  return { params, results, series, hasResults, setParams, setResults, updateFromResult }
 })

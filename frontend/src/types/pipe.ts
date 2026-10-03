@@ -22,5 +22,8 @@ export interface PipeResult {
   profile: { distance_m: number; temperature_c: number }[]
   /** Raw backend series preserved for the 3D viewer (ice_fraction) */
   rawSeries?: { time_hours: number; t_min_water_c: number; t_avg_water_c: number; t_max_water_c: number; ice_fraction: number }[]
+  /** Full raw AnalysisResults from the backend for as-branch components */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  rawResults?: any
 }
 

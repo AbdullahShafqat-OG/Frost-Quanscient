@@ -206,6 +206,7 @@ function toFrontendResult(p: PipeParams, r: any): PipeResult {
     profile,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     rawSeries: (r.series ?? []) as any,
+    rawResults: r,
   }
 }
 

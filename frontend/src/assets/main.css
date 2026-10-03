@@ -9,3 +9,7 @@ body {
 }
 input[type="range"] { width:100%; cursor:pointer; accent-color:#087f79; }
 
+.card {
+  @apply bg-white rounded-xl border border-grey-200 shadow-sm;
+}
+
