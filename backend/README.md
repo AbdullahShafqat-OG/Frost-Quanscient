@@ -1,92 +1,34 @@
-# Beer Cooling Simulation Backend
+# Frost pipe simulation backend
 
-FastAPI backend for the beer cooling simulation application.
+FastAPI backend for local pipe-freezing estimates and asynchronous Allsolve FEM jobs.
+See [the root README](../README.md) for setup, inputs, model assumptions and credentials.
 
-## Setup
+From the project root:
 
-1. Create a virtual environment:
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+```powershell
+.\venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --reload
 ```
 
-2. Install dependencies:
-```bash
-pip install -r requirements.txt
+API docs: http://localhost:8000/docs.
+
+- POST /api/pipe/estimate returns an immediate analytical result.
+- POST /api/pipe/start starts a cloud job.
+- GET /api/pipe/{job_id} returns its status and results.
+- GET /health checks the service.
+
+The Allsolve SDK reads backend/.env or environment variables. Configure
+ALLSOLVE_ACCESS_KEY and ALLSOLVE_SECRET_KEY for cloud runs. The existing QS_ names
+are also supported. Quick estimates need no credentials.
+
+Successful cloud simulations are reused by parameter/script fingerprint.
+Existing cloud projects and results are preserved; incomplete projects require
+inspection in Allsolve. Use one backend worker for this demo's in-memory jobs.
+
+Run tests from backend with:
+
+```powershell
+..\venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-3. Install the Allsolve SDK (from local wheel or pip):
-```bash
-pip install allsolve
-```
-
-4. Set environment variables:
-```bash
-export QS_ACCESS_KEY=your_access_key_here
-export QS_SECRET_KEY=your_secret_key_here
-export QS_HOST=https://allsolve.quanscient.com
-```
-
-## Running the Server
-
-```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-The API will be available at:
-- API: http://localhost:8000
-- Docs: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
-
-## API Endpoints
-
-### Start Simulation
-```http
-POST /api/simulation/start
-Content-Type: application/json
-
-{
-  "container_shape": "can",
-  "cooling_method": "ice_water",
-  "initial_temp_celsius": 20.0,
-  "target_temp_celsius": 4.0,
-  "immersion_level": 0.8,
-  "simulation_duration_minutes": 30
-}
-```
-
-### Get Status
-```http
-GET /api/simulation/{simulation_id}/status
-```
-
-### Get Results
-```http
-GET /api/simulation/{simulation_id}/results
-```
-
-### Demo Mode (No SDK Required)
-```http
-POST /api/simulation/{simulation_id}/demo
-Content-Type: application/json
-
-{
-  "container_shape": "can",
-  "cooling_method": "ice_water",
-  "initial_temp_celsius": 20.0
-}
-```
-
-### WebSocket Updates
-```
-WS /api/simulation/{simulation_id}/ws
-```
-
-## Physics Model
-
-The simulation solves the transient heat conduction equation:
-
-**ρ Cₚ ∂T/∂t = ∇ · (k ∇T)**
-
-With convective boundary conditions at the surface.
+The former beer simulation modules are inactive reference code.
 

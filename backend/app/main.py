@@ -1,104 +1,49 @@
-"""
-Beer Cooling Simulation API
-
-A FastAPI application that provides endpoints for running thermal simulations
-of beer cooling using the Allsolve SDK.
-"""
-
+"""Frost water infrastructure simulation API."""
 import logging
-import sys
-
+import time
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from .pipe_api import router
 
-from .config import get_settings
-from .routers import simulation_router
-
-# Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+    level=logging.DEBUG,
+    format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
     datefmt="%H:%M:%S",
-    stream=sys.stdout,
 )
-logging.getLogger("allsolve").setLevel(logging.DEBUG)  # SDK internals (API calls, retries)
-logger = logging.getLogger(__name__)
+logging.getLogger("allsolve").setLevel(logging.DEBUG)
+logging.getLogger("httpx").setLevel(logging.DEBUG)
+logging.getLogger("httpcore").setLevel(logging.DEBUG)
+logger = logging.getLogger("frost.api")
 
-settings = get_settings()
+app = FastAPI(title="Frost — Water Pipe Freezing", version="2.0.0",
+              description="Pipe cooling and bulk freezing onset: local estimates and Allsolve cloud simulations.")
+app.add_middleware(CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173",
+                   "http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_methods=["*"], allow_headers=["*"])
+app.include_router(router)
 
-logger.info("=" * 60)
-logger.info("🍺 BEER COOLING SIMULATOR BACKEND STARTING")
-logger.info("=" * 60)
-logger.info(f"   Allsolve Host: {settings.qs_host}")
-logger.info(f"   API Key configured: {'✅ Yes' if settings.qs_access_key else '❌ No'}")
-logger.info(f"   Debug mode: {settings.debug}")
 
-app = FastAPI(
-    title="Beer Cooling Simulator API",
-    description="""
-    🍺 Simulate how quickly your beer cools down in different environments!
-
-    This API provides endpoints to:
-    - Start thermal simulations of beer cooling
-    - Monitor simulation progress in real-time
-    - Retrieve temperature vs time results
-
-    ## Physics Model
-
-    The simulation solves the transient heat conduction equation:
-
-    **ρ Cₚ ∂T/∂t = ∇ · (k ∇T)**
-
-    With convective boundary conditions:
-
-    **q = h (T_surface - T_coolant)**
-
-    Where:
-    - h = 600 W/(m²·K) for ice water immersion
-    - h = 10 W/(m²·K) for air exposure
-    """,
-    version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
-)
-
-# CORS configuration for frontend
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",  # Vite dev server
-        "http://localhost:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:3000",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Include routers
-app.include_router(simulation_router)
+@app.middleware("http")
+async def log_requests(request, call_next):
+    started = time.perf_counter()
+    logger.debug("Request: %s %s", request.method, request.url.path)
+    try:
+        response = await call_next(request)
+    except Exception:
+        logger.exception("Request failed: %s %s", request.method, request.url.path)
+        raise
+    logger.debug("Response: %s %s -> %s (%.1f ms)", request.method,
+                 request.url.path, response.status_code,
+                 (time.perf_counter() - started) * 1000)
+    return response
 
 
 @app.get("/")
-async def root():
-    """Root endpoint with API information."""
-    return {
-        "name": settings.app_name,
-        "version": "1.0.0",
-        "description": "Beer Cooling Simulation API",
-        "docs": "/docs",
-        "endpoints": {
-            "start_simulation": "POST /api/simulation/start",
-            "get_status": "GET /api/simulation/{id}/status",
-            "get_results": "GET /api/simulation/{id}/results",
-            "demo": "POST /api/simulation/{id}/demo",
-            "websocket": "WS /api/simulation/{id}/ws",
-        },
-    }
+def root():
+    return {"name": "Frost", "docs": "/docs", "version": "2.0.0"}
 
 
 @app.get("/health")
-async def health_check():
-    """Health check endpoint."""
+def health():
     return {"status": "healthy"}

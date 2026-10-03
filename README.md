@@ -1,148 +1,145 @@
-# 🍺 Beer Cooling Simulator
+# Frost — Water Pipe Freezing Simulator
 
-A web application that simulates the transient cooling of beer in various environments using the Allsolve FEM platform.
+An interactive demo for exploring cold-weather exposure of water infrastructure.
+Configure an exposed pipe and compare the effect of ambient temperature, exposure
+duration, pipe length and diameter, wall material, insulation and continuous flow.
 
-## Overview
+The application predicts **bulk-water freezing onset**, shows temperatures along
+the pipe and over time, compares up to four scenarios, and exports a temperature
+history with its input parameters as CSV.
 
-This application demonstrates how to:
-- Build a complete simulation workflow with the Allsolve SDK
-- Create parameterized thermal simulations
-- Develop a modern web frontend with Vue 3
-- Visualize simulation results in real-time
+## Run locally
 
-## Physics Model
+Use Python 3.10+ and Node.js 18+.
 
-The simulation solves the **transient heat conduction equation**:
+Backend (PowerShell, from the project root):
 
-```
-ρ Cₚ ∂T/∂t = ∇ · (k ∇T)
-```
-
-With **convective boundary conditions**:
-
-```
-q = h (T_surface - T_coolant)
-```
-
-### Material Properties
-
-| Property | Beer (Liquid) | Aluminum (Can) | Glass (Bottle) |
-|----------|---------------|----------------|----------------|
-| Density (kg/m³) | 1000 | 2700 | 2500 |
-| Specific Heat (J/kg·K) | 4184 | 900 | 840 |
-| Thermal Conductivity (W/m·K) | 1.2 | 237 | 1.0 |
-
-### Cooling Methods
-
-| Method | h_submerged (W/m²·K) | h_exposed (W/m²·K) | T_coolant (°C) |
-|--------|----------------------|--------------------| ---------------|
-| Ice Water | 600 | 10 | 0 |
-| Refrigerator | 10 | 10 | 4 |
-| Freezer | 15 | 15 | -18 |
-| Salt & Ice | 800 | 10 | -5 |
-
-## Project Structure
-
-```
-beer_cooling_app/
-├── backend/              # FastAPI backend
-│   ├── app/
-│   │   ├── allsolve/     # Allsolve SDK integration
-│   │   ├── models/       # Pydantic models
-│   │   ├── routers/      # API endpoints
-│   │   ├── config.py     # Environment-based settings
-│   │   └── main.py       # FastAPI application
-│   ├── sim/
-│   │   └── heat_transfer.py  # Quanscient simulation script
-│   └── requirements.txt
-├── frontend/             # Vue 3 frontend
-│   ├── public/           # Static assets
-│   ├── src/
-│   │   ├── api/          # API client
-│   │   ├── components/   # Vue components
-│   │   ├── stores/       # Pinia state management
-│   │   └── types/        # TypeScript type definitions
-│   └── package.json
-└── README.md
-```
-
-## Quick Start
-
-### Prerequisites
-
-- Python 3.10+
-- Node.js 18+
-- Allsolve SDK credentials (for full simulations)
-
-### Backend Setup
-
-```bash
-cd backend
-
-# Create virtual environment
+```powershell
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Install Allsolve SDK
-pip install allsolve
-
-# Set environment variables
-export QS_ACCESS_KEY=your_key
-export QS_SECRET_KEY=your_secret
-
-# Run server
-uvicorn app.main:app --reload
+.\venv\Scripts\python.exe -m pip install -r backend/requirements.txt
+.\venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --reload
 ```
 
-### Frontend Setup
+Frontend (another terminal):
 
-```bash
+```powershell
 cd frontend
-
-# Install dependencies
 npm install
-
-# Run development server
 npm run dev
 ```
 
-### Access the Application
+Open http://localhost:5173. API documentation is at http://localhost:8000/docs.
+The frontend proxies /api to port 8000.
 
-- Frontend: http://localhost:5173
-- API Docs: http://localhost:8000/docs
+## Calculation engines
 
-## Usage
+**Quick estimate** runs locally without Allsolve credentials. An analytical
+plug-flow solution uses the same cylindrical radial resistance as the cloud model.
+This is the default engine, including the initial example.
 
-1. **Select Container Type**: Choose between can, bottle, or pint glass
-2. **Choose Cooling Method**: Ice water, refrigerator, freezer, or salt & ice
-3. **Set Parameters**: Initial temperature, target temperature, immersion level
-4. **Run Simulation**: Click "Start Cooling" to run the simulation
-5. **View Results**: Watch the temperature curve and 3D visualization
+**Quanscient Allsolve** runs a reduced axial thermal FEM model in the cloud.
+Install the SDK and configure your Organization API credentials:
 
-## API Endpoints
+```powershell
+.\venv\Scripts\python.exe -m pip install "allsolve>=0.5.0"
+```
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/simulation/start` | POST | Start a new simulation |
-| `/api/simulation/{id}/status` | GET | Get simulation status |
-| `/api/simulation/{id}/results` | GET | Get simulation results |
-| `/api/simulation/{id}/abort` | POST | Abort a running simulation |
-| `/api/simulation/{id}/demo` | POST | Run demo (no SDK required) |
-| `/api/simulation/{id}/ws` | WS | WebSocket for real-time updates |
+Create backend/.env (never commit credentials):
 
-## Demo Mode
+```dotenv
+ALLSOLVE_ACCESS_KEY=your_key
+ALLSOLVE_SECRET_KEY=your_secret
+ALLSOLVE_HOST=https://allsolve.quanscient.com/
+```
 
-The application includes a demo mode that uses Newton's law of cooling for quick approximations without requiring the Allsolve backend. This is useful for testing the frontend.
+The SDK also accepts the existing QS_ACCESS_KEY, QS_SECRET_KEY and QS_HOST
+environment variable names. Select the Allsolve engine in the interface and run.
+The backend checks compute quota, builds geometry, meshes, solves, and retrieves
+water temperatures. Jobs use account compute credits. Successful cloud results
+are cached by inputs and solver-script version. Each scenario has a dedicated
+cache/project under backend/.allsolve_cache/pipe/. Cloud projects and results
+are preserved, including on failure; existing incomplete projects require
+inspection before another run. The demo supports one concurrent cloud job and
+stores job status in memory, so use a single backend process.
 
-## Credits
+## Model and interpretation
 
-Built with:
-- [Quanscient Allsolve](https://quanscient.com) - FEM simulation platform
-- [Vue 3](https://vuejs.org) - Frontend framework
-- [TresJS](https://tresjs.org) - Vue Three.js wrapper
-- [FastAPI](https://fastapi.tiangolo.com) - Backend framework
-- [Tailwind CSS](https://tailwindcss.com) - Styling
+For inner radius ri, outer pipe radius ro and outer insulation radius rs, the
+resistance per unit length is:
+
+```text
+R' = ln(ro/ri)/(2π k_pipe)
+   + ln(rs/ro)/(2π k_insulation)
+   + 1/(2π rs h_external)
+tau = rho cp A R'
+v = Q/A
+```
+
+Water starts uniformly at the inlet temperature. Ambient and inlet temperatures,
+flow and material properties stay constant. In the analytical model, water
+cools for the smaller of the elapsed exposure and the travel time from the inlet:
+
+```text
+T(x,t) = T_ambient + (T_inlet - T_ambient) exp(-min(t,x/v)/tau)
+```
+
+At zero flow, cooling age is simply t everywhere. Consequently, length changes
+total heat loss but does not change stagnant cooling time for a uniform pipe.
+
+For subzero ambient, the analytical time to 0 °C is:
+
+```text
+t_freeze = tau ln((T_inlet - T_ambient)/(-T_ambient))
+Q_critical = A L / t_freeze
+```
+
+Flow must be **strictly above** the threshold for a positive steady outlet
+temperature. This threshold is analytical even when the temperature curve comes
+from Allsolve. “No onset” means no bulk freezing within the specified exposure.
+A pipe may remain above zero for a short exposure and freeze later.
+
+The Allsolve model solves the reduced axial advection–diffusion–reaction equation
+on a normalized 2D strip, uniform across its transverse direction. The flow is
+prescribed, and wall/insulation heat loss is a distributed sink. It includes
+water axial thermal diffusion and mesh-dependent diffusion to stabilize
+advection. It is not a full conjugate CFD model. The custom solver script uses
+kelvin internally and implicit Euler time stepping. Temperature histories and
+profiles come from the cloud output; freezing onset is interpolated between
+the final positive and first nonpositive temperature samples.
+
+Both engines end at bulk freezing onset. They exclude local wall ice, latent
+heat, blockage, bursting, pressure effects, gravity-driven convection, internal
+film resistance, wall/insulation thermal mass, pipe-end losses, buried soil and
+heat tracing. The uniform cross-section assumption is especially limited for
+stagnant water. Use the demo for comparisons; installation design requires
+validation and a fuller physical model.
+
+Cylindrical resistance reference:
+[Oak Ridge National Laboratory — Thermal Resistance Formula](https://industrialresources.ornl.gov/measur/suite/docs/group__insulated__pipe__reduction__thermal__resistance__formula).
+Allsolve integration follows the local [SDK skills](sdk-skills/allsolve-sdk/SKILL.md)
+and [thermal guide](sdk-skills/allsolve-domain-thermal/SKILL.md).
+
+## API
+
+| Endpoint | Purpose |
+| --- | --- |
+| POST /api/pipe/estimate | Immediate analytical result |
+| POST /api/pipe/start | Queue an Allsolve cloud simulation |
+| GET /api/pipe/{job_id} | Status, progress and completed result |
+| GET /health | Health check |
+
+The previous beer simulation source is retained for reference; it is not
+registered with the API or used by the active interface.
+
+## Verification
+
+```powershell
+cd backend
+..\venv\Scripts\python.exe -m unittest discover -s tests -v
+cd ../frontend
+npm run build
+```
+
+Tests cover cooling and energy-balance invariants, insulation, flow thresholds,
+exposure, validation, asynchronous job states and cloud result parsing.
 

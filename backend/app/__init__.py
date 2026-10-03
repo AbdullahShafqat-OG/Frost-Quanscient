@@ -1,2 +1,2 @@
-# Beer Cooling Simulation Backend
+"""Frost exposed-water-pipe simulation backend."""
 
